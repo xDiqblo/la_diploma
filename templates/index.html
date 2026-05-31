@@ -33,6 +33,7 @@
             gap: 15px;
         }
         .nav-btn {
+            display: inline-block;
             padding: 10px 25px;
             font-size: 16px;
             font-weight: bold;
@@ -41,6 +42,7 @@
             cursor: pointer;
             background-color: #3a3a55;
             color: white;
+            text-decoration: none;
             transition: all 0.2s;
         }
         .nav-btn:hover {
@@ -170,8 +172,8 @@
         <!-- Верхняя панель -->
         <div class="top-bar">
             <div class="nav-buttons">
-                <button class="nav-btn" id="btn-settings">⚙️ Настройки</button>
-                <button class="nav-btn" id="btn-events">📋 События</button>
+                <a class="nav-btn" href="/settings">⚙️ Настройки</a>
+                <a class="nav-btn" href="/events">📋 События</a>
             </div>
             <div class="title">📹 Камера АЗС</div>
         </div>
@@ -314,14 +316,6 @@
     document.getElementById('btn-stop-detection')?.addEventListener('click', async () => {
         await fetch('/api/detection/stop', { method: 'POST' });
         updateDetections();
-    });
-
-    document.getElementById('btn-settings')?.addEventListener('click', () => {
-        alert('Страница настроек будет добавлена позже');
-    });
-
-    document.getElementById('btn-events')?.addEventListener('click', () => {
-        alert('Страница событий будет добавлена позже');
     });
 
     // Запускаем обновление

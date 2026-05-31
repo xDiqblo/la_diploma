@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Настройки — Камера АЗС</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0; padding: 20px;
+            background-color: #1e1e2f; color: #eee;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        .top-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px; padding: 10px 20px;
+            background: #2d2d3f; border-radius: 10px;
+        }
+        .nav-buttons { display: flex; gap: 15px; }
+        .nav-btn {
+            display: inline-block; padding: 10px 25px; font-size: 16px; font-weight: bold;
+            border: none; border-radius: 8px; cursor: pointer;
+            background-color: #3a3a55; color: white; text-decoration: none;
+        }
+        .nav-btn:hover { background-color: #4a4a6a; }
+        .title { font-size: 20px; font-weight: bold; color: #ffaa44; }
+        .card {
+            background: #2d2d3f; border-radius: 12px; padding: 20px; margin-bottom: 20px;
+        }
+        .card h3 { margin-top: 0; color: #ffaa44; }
+        .field { margin-bottom: 18px; }
+        .field label { display: block; margin-bottom: 6px; font-weight: bold; }
+        .field .hint { font-size: 12px; color: #aaa; margin-top: 4px; }
+        input[type=number], input[type=text], select {
+            width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #4a4a6a;
+            background: #1e1e2f; color: #eee; font-size: 15px;
+        }
+        input[type=checkbox] { transform: scale(1.4); margin-right: 10px; }
+        .row-value { color: #ffaa44; font-weight: bold; }
+        .btn {
+            padding: 12px 30px; font-size: 16px; font-weight: bold; border: none;
+            border-radius: 8px; cursor: pointer; color: white;
+        }
+        .btn-save { background: #28a745; }
+        .btn-save:hover { background: #218838; }
+        .btn-test { background: #2196f3; }
+        .btn-test:hover { background: #1976d2; }
+        #status { margin-left: 15px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top-bar">
+            <div class="nav-buttons">
+                <a class="nav-btn" href="/">📹 Камера</a>
+                <a class="nav-btn" href="/events">📋 События</a>
+            </div>
+            <div class="title">⚙️ Настройки</div>
+        </div>
+
+        <!-- Параметры детекции -->
+        <div class="card">
+            <h3>Детекция</h3>
+            <div class="field">
+                <label>Порог уверенности: <span class="row-value" id="conf-val">0.5</span></label>
+                <input type="range" id="confidence_threshold" min="0.1" max="0.9" step="0.05"
+                       style="width:100%" oninput="document.getElementById('conf-val').textContent=this.value">
+                <div class="hint">Чем выше — тем меньше ложных срабатываний.</div>
+            </div>
+            <div class="field">
+                <label>Пропуск кадров (frame_skip)</label>
+                <input type="number" id="frame_skip" min="1" max="10" step="1">
+                <div class="hint">Запускать YOLO раз в N кадров. Больше = выше FPS, но реже обновление.</div>
+            </div>
+            <div class="field">
+                <label>
+                    <input type="checkbox" id="treat_person_as_car">
+                    Считать «человека» автомобилем
+                </label>
+                <div class="hint">Камера АЗС под наклоном, машины часто детектируются как person. Включите для корректного подсчёта машин.</div>
+            </div>
+            <div class="field">
+                <label>Порог «долгого нахождения» (сек)</label>
+                <input type="number" id="long_stay_seconds" min="5" max="600" step="5">
+                <div class="hint">Если объект в кадре дольше — создаётся событие-аномалия.</div>
+            </div>
+        </div>
+
+        <!-- Тревоги -->
+        <div class="card">
+            <h3>Тревоги и сохранение</h3>
+            <div class="field">
+                <label>Порог уверенности для тревоги</label>
+                <input type="number" id="alert_confidence" min="0.1" max="0.99" step="0.05">
+                <div class="hint">Скриншот/событие создаётся, если уверенность не ниже этого значения.</div>
+            </div>
+            <div class="field">
+                <label><input type="checkbox" id="save_screenshots"> Сохранять скриншоты</label>
+            </div>
+            <div class="field">
+                <label><input type="checkbox" id="save_video_clips"> Сохранять видеофрагменты</label>
+                <div class="hint">Изменения секунд клипа применяются после перезапуска сервера.</div>
+            </div>
+            <div class="field">
+                <label>Секунд ДО события</label>
+                <input type="number" id="clip_pre_seconds" min="2" max="30" step="1">
+            </div>
+            <div class="field">
+                <label>Секунд ПОСЛЕ события</label>
+                <input type="number" id="clip_post_seconds" min="2" max="30" step="1">
+            </div>
+        </div>
+
+        <!-- Telegram -->
+        <div class="card">
+            <h3>Telegram-уведомления</h3>
+            <div class="field">
+                <label><input type="checkbox" id="telegram_enabled"> Включить уведомления</label>
+            </div>
+            <div class="field">
+                <label>Токен бота</label>
+                <input type="text" id="telegram_token" placeholder="123456:ABC-DEF...">
+            </div>
+            <div class="field">
+                <label>Chat ID</label>
+                <input type="text" id="telegram_chat_id" placeholder="123456789">
+            </div>
+            <button class="btn btn-test" onclick="testTelegram()">📨 Проверить связь</button>
+        </div>
+
+        <button class="btn btn-save" onclick="saveSettings()">💾 Сохранить настройки</button>
+        <span id="status"></span>
+    </div>
+
+    <script>
+    // Список всех полей настроек
+    const NUM_FIELDS = ['confidence_threshold','frame_skip','long_stay_seconds',
+                        'alert_confidence','clip_pre_seconds','clip_post_seconds'];
+    const BOOL_FIELDS = ['treat_person_as_car','save_screenshots','save_video_clips','telegram_enabled'];
+    const TEXT_FIELDS = ['telegram_token','telegram_chat_id'];
+
+    async function loadSettings() {
+        const resp = await fetch('/api/settings');
+        const s = await resp.json();
+        for (const f of NUM_FIELDS) {
+            if (s[f] != null) document.getElementById(f).value = s[f];
+        }
+        for (const f of BOOL_FIELDS) {
+            document.getElementById(f).checked = !!s[f];
+        }
+        for (const f of TEXT_FIELDS) {
+            document.getElementById(f).value = s[f] || '';
+        }
+        document.getElementById('conf-val').textContent = s.confidence_threshold;
+    }
+
+    async function saveSettings() {
+        const data = {};
+        for (const f of NUM_FIELDS) data[f] = parseFloat(document.getElementById(f).value);
+        for (const f of BOOL_FIELDS) data[f] = document.getElementById(f).checked;
+        for (const f of TEXT_FIELDS) data[f] = document.getElementById(f).value;
+
+        const status = document.getElementById('status');
+        status.textContent = 'Сохранение...';
+        status.style.color = '#aaa';
+        const resp = await fetch('/api/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        if (resp.ok) {
+            status.textContent = '✅ Сохранено';
+            status.style.color = '#28a745';
+        } else {
+            status.textContent = '❌ Ошибка';
+            status.style.color = '#dc3545';
+        }
+        setTimeout(() => status.textContent = '', 3000);
+    }
+
+    async function testTelegram() {
+        // Сначала сохраняем, чтобы сервер использовал актуальный token/chat_id
+        await saveSettings();
+        const resp = await fetch('/api/telegram/test', { method: 'POST' });
+        const data = await resp.json();
+        alert(data.message);
+    }
+
+    loadSettings();
+    </script>
+</body>
+</html>
