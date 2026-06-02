@@ -8,7 +8,10 @@ import sqlite3
 import threading
 from datetime import datetime
 
-DB_FILE = '../data/events.db'
+# Путь к БД относительно корня проекта (откуда запускается main_web.py).
+# Раньше здесь было '../data/events.db' — путь уводил на уровень выше проекта,
+# из-за чего события писались «мимо» и терялись. Исправлено на корректный путь.
+DB_FILE = 'data/events.db'
 _lock = threading.Lock()
 
 
@@ -30,26 +33,31 @@ def init_db():
                 class_name  TEXT,
                 track_id    INTEGER,
                 confidence  REAL,
+                zone        TEXT,              -- имя зоны срабатывания (NULL = весь кадр)
                 screenshot  TEXT,
                 video_clip  TEXT,
                 synced      INTEGER DEFAULT 0  -- 0 = ещё не отправлено в облако
             )
         """)
+        # Миграция: если БД создана старой версией без колонки zone — добавляем.
+        cols = {r[1] for r in c.execute("PRAGMA table_info(events)").fetchall()}
+        if 'zone' not in cols:
+            c.execute("ALTER TABLE events ADD COLUMN zone TEXT")
         c.commit()
         c.close()
 
 
 def add_event(event_type, class_name=None, track_id=None,
-              confidence=None, screenshot=None, video_clip=None) -> int:
+              confidence=None, zone=None, screenshot=None, video_clip=None) -> int:
     """Добавляет событие, возвращает его id."""
     ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     with _lock:
         c = _conn()
         cur = c.execute(
             """INSERT INTO events
-               (timestamp, event_type, class_name, track_id, confidence, screenshot, video_clip)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (ts, event_type, class_name, track_id, confidence, screenshot, video_clip),
+               (timestamp, event_type, class_name, track_id, confidence, zone, screenshot, video_clip)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ts, event_type, class_name, track_id, confidence, zone, screenshot, video_clip),
         )
         c.commit()
         eid = cur.lastrowid
@@ -75,19 +83,27 @@ def mark_synced(event_id: int):
         c.close()
 
 
+def _build_where(event_type, date_from, date_to, zone):
+    """Собирает WHERE-условие и параметры для фильтров (общая часть запросов)."""
+    clauses, params = [], []
+    if event_type:
+        clauses.append("event_type=?"); params.append(event_type)
+    if date_from:
+        clauses.append("timestamp>=?"); params.append(date_from)
+    if date_to:
+        clauses.append("timestamp<=?"); params.append(date_to + ' 23:59:59')
+    if zone:
+        clauses.append("zone=?"); params.append(zone)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, params
+
+
 def get_events(limit=200, offset=0, event_type=None,
-               date_from=None, date_to=None) -> list[dict]:
+               date_from=None, date_to=None, zone=None) -> list[dict]:
     """Список событий с фильтрацией и пагинацией (новые сверху)."""
     with _lock:
         c = _conn()
-        clauses, params = [], []
-        if event_type:
-            clauses.append("event_type=?"); params.append(event_type)
-        if date_from:
-            clauses.append("timestamp>=?"); params.append(date_from)
-        if date_to:
-            clauses.append("timestamp<=?"); params.append(date_to + ' 23:59:59')
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        where, params = _build_where(event_type, date_from, date_to, zone)
         rows = c.execute(
             f"SELECT * FROM events {where} ORDER BY id DESC LIMIT ? OFFSET ?",
             (*params, limit, offset),
@@ -96,30 +112,62 @@ def get_events(limit=200, offset=0, event_type=None,
         return [dict(r) for r in rows]
 
 
-def count_events(event_type=None, date_from=None, date_to=None) -> int:
+def count_events(event_type=None, date_from=None, date_to=None, zone=None) -> int:
     """Число событий (для пагинации)."""
     with _lock:
         c = _conn()
-        clauses, params = [], []
-        if event_type:
-            clauses.append("event_type=?"); params.append(event_type)
-        if date_from:
-            clauses.append("timestamp>=?"); params.append(date_from)
-        if date_to:
-            clauses.append("timestamp<=?"); params.append(date_to + ' 23:59:59')
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        where, params = _build_where(event_type, date_from, date_to, zone)
         row = c.execute(f"SELECT COUNT(*) FROM events {where}", params).fetchone()
         c.close()
         return row[0]
 
 
-def get_unsynced(limit=50) -> list[dict]:
-    """События, ещё не отправленные в облако."""
+def zone_report(date_from=None, date_to=None) -> list[dict]:
+    """
+    Отчёт по зонам: сколько тревог дала каждая зона (и какого типа).
+    Используется на странице «События» для отдельной отчётности по зонам.
+    """
     with _lock:
         c = _conn()
-        rows = c.execute(
-            "SELECT * FROM events WHERE synced=0 ORDER BY id LIMIT ?", (limit,)
-        ).fetchall()
+        where, params = _build_where(None, date_from, date_to, None)
+        rows = c.execute(f"""
+            SELECT COALESCE(zone, 'Без зоны (весь кадр)') AS zone,
+                   COUNT(*)                               AS total,
+                   SUM(event_type LIKE 'Зона: вход%')     AS presence,
+                   SUM(event_type LIKE 'Зона: задержка%') AS long_stay,
+                   SUM(event_type LIKE 'Зона: скопление%')AS crowd
+            FROM events {where}
+            GROUP BY zone
+            ORDER BY total DESC
+        """, params).fetchall()
+        c.close()
+        return [dict(r) for r in rows]
+
+
+def get_unsynced(limit=50, min_age_seconds=0) -> list[dict]:
+    """
+    События, ещё не отправленные в облако.
+
+    min_age_seconds: брать только события «старше» N секунд, ЛИБО те, у которых
+    видеоклип уже готов. Это нужно, потому что клип пишется асинхронно (через
+    несколько секунд после создания события): даём ему время записаться, чтобы
+    он успел выгрузиться в облако вместе с событием, а не потерялся.
+    """
+    with _lock:
+        c = _conn()
+        if min_age_seconds > 0:
+            rows = c.execute(
+                """SELECT * FROM events
+                   WHERE synced=0
+                     AND (video_clip IS NOT NULL
+                          OR timestamp <= datetime('now','localtime',?))
+                   ORDER BY id LIMIT ?""",
+                (f'-{int(min_age_seconds)} seconds', limit),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT * FROM events WHERE synced=0 ORDER BY id LIMIT ?", (limit,)
+            ).fetchall()
         c.close()
         return [dict(r) for r in rows]
 

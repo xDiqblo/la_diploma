@@ -18,22 +18,31 @@ from core import telegram_notify, database
 from core.detector import Detector
 from core.video_buffer import VideoClipBuffer
 from core.cloud_sync import CloudSync
+from core.zones import ZoneManager
+
+# Единая папка для медиа тревог (скриншоты + видеоклипы).
+# Раньше пути расходились (создавалась 'detections', а писалось в 'data/detections'),
+# из-за чего скриншоты/клипы терялись. Теперь всё в одной папке 'detections'.
+MEDIA_DIR = 'detections'
 
 # ─── создаём нужные папки ───────────────────────────────────────────────────
-for _d in ('templates', 'detections', 'static'):
+for _d in ('templates', MEDIA_DIR, 'static'):
     os.makedirs(_d, exist_ok=True)
 
 # ─── глобальные переменные ──────────────────────────────────────────────────
 frame_buffer = None            # последний кадр для MJPEG-стрима
 current_detections: list = []
 current_class_counts: dict = {}
+current_zone_stats: list = []  # живые метрики по зонам
 detection_fps: int = 0
 running: bool = True
 video_clip_buffer: VideoClipBuffer | None = None
 
-# track_id, по которым уже создавались события (не дублируем)
+# track_id, по которым уже создавались ГЛОБАЛЬНЫЕ события (не дублируем)
 _alerted_appear: set = set()
 _alerted_long:   set = set()
+# Время последней глобальной тревоги каждого типа — антидребезг
+_last_global_event: dict = {}
 
 # ─── загрузка настроек и инициализация зависимостей ─────────────────────────
 SETTINGS = config.load_settings()
@@ -61,36 +70,48 @@ cloud_sync = CloudSync(
     enabled=SETTINGS.get('cloud_sync_enabled', False),
 )
 
+# Менеджер зон срабатывания — основной источник «осмысленных» тревог.
+zone_manager = ZoneManager(
+    zones=SETTINGS.get('zones', []),
+    cooldown_default=SETTINGS.get('event_cooldown_seconds', 15),
+)
+
 # ─── сохранение события-тревоги ─────────────────────────────────────────────
 
-def save_event(event_type: str, obj: dict, frame):
-    """Скриншот → БД → видеоклип → Telegram. Всё обёрнуто в try/except."""
-    class_name = obj['class']
-    track_id   = obj['track_id']
-    confidence = obj['confidence']
+def save_event(event_type: str, obj: dict, frame, zone: str | None = None,
+               save_media: bool = True):
+    """
+    Сохраняет тревогу: скриншот → БД → видеоклип → Telegram.
+    save_media=False → пишем только строку в БД, без скриншота/клипа
+    (используется, если у зоны отключено сохранение медиа).
+    """
+    class_name = obj.get('class')
+    track_id   = obj.get('track_id')
+    confidence = obj.get('confidence')
 
-    # 1. Скриншот
+    # 1. Скриншот (только для «настоящих» тревог и если включено в настройках)
     screenshot_path = None
-    if SETTINGS.get('save_screenshots', True):
+    if save_media and SETTINGS.get('save_screenshots', True):
         fname = f"shot_{time.strftime('%Y%m%d_%H%M%S')}_id{track_id}.jpg"
-        path  = os.path.join('data/detections', fname)
+        path  = os.path.join(MEDIA_DIR, fname)
         try:
             cv2.imwrite(path, frame)
-            screenshot_path = f'data/detections/{fname}'
+            screenshot_path = f'{MEDIA_DIR}/{fname}'
         except Exception as e:
             print(f'[Событие] Не удалось сохранить скриншот: {e}')
 
-    # 2. Запись в SQLite
+    # 2. Запись в SQLite (зона попадает в отдельную колонку для отчётности)
     event_id = database.add_event(
         event_type=event_type,
         class_name=class_name,
         track_id=track_id,
         confidence=confidence,
+        zone=zone,
         screenshot=screenshot_path,
     )
 
     # 3. Видеоклип (асинхронно — внутри VideoClipBuffer)
-    if SETTINGS.get('save_video_clips', True) and video_clip_buffer:
+    if save_media and SETTINGS.get('save_video_clips', True) and video_clip_buffer:
         def _on_clip_ready(path: str):
             database.update_event_clip(event_id, path.replace('\\', '/'))
         video_clip_buffer.start_clip(on_complete=_on_clip_ready)
@@ -99,7 +120,9 @@ def save_event(event_type: str, obj: dict, frame):
     if SETTINGS.get('telegram_enabled', False):
         token   = SETTINGS.get('telegram_token', '')
         chat_id = SETTINGS.get('telegram_chat_id', '')
+        zone_line = f'Зона: {zone}\n' if zone else ''
         caption = (f'🚨 {event_type}\n'
+                   f'{zone_line}'
                    f'Объект: {class_name} (ID {track_id})\n'
                    f'Уверенность: {confidence}\n'
                    f'Время: {time.strftime("%H:%M:%S")}')
@@ -108,22 +131,50 @@ def save_event(event_type: str, obj: dict, frame):
         else:
             telegram_notify.send_message(token, chat_id, caption)
 
-    print(f'[Событие] {event_type} | {class_name} ID:{track_id} conf:{confidence}')
+    print(f'[Событие] {event_type} | зона={zone} | {class_name} '
+          f'ID:{track_id} conf:{confidence}')
 
 
 def handle_events(frame, detections: list):
-    """Анализирует детекции и при необходимости создаёт тревоги."""
+    """
+    Создаёт тревоги. Главный механизм — ПРАВИЛА ЗОН: тревога возникает только в
+    заданной области кадра, поэтому проезжающие мимо машины больше не засыпают
+    папки скриншотами. Глобальные тревоги (на весь кадр) по умолчанию выключены
+    и служат запасным вариантом, когда зоны ещё не настроены.
+    """
+    now = time.time()
+    h, w = frame.shape[:2]
+
+    # 1. Тревоги по зонам
+    for ev in zone_manager.process(detections, w, h, now):
+        save_event(ev['event_type'], ev['obj'], frame,
+                   zone=ev['zone'], save_media=ev['save_media'])
+
+    # 2. Глобальные тревоги — только если оператор явно их включил
+    cooldown = SETTINGS.get('event_cooldown_seconds', 15)
     alert_conf = SETTINGS.get('alert_confidence', 0.7)
+    appear_on  = SETTINGS.get('alert_on_appearance', False)
+    long_on    = SETTINGS.get('global_long_stay_alerts', False)
+
+    def _cooldown_ok(key: str) -> bool:
+        if now - _last_global_event.get(key, 0) < cooldown:
+            return False
+        _last_global_event[key] = now
+        return True
+
+    if not (appear_on or long_on):
+        return
+
     for obj in detections:
         tid = obj.get('track_id')
         if tid is None:
             continue
-        # Тревога 1: уверенное появление нового объекта
-        if tid not in _alerted_appear and obj['confidence'] >= alert_conf:
+        if appear_on and tid not in _alerted_appear and \
+                obj['confidence'] >= alert_conf and _cooldown_ok('appear'):
             _alerted_appear.add(tid)
             save_event('Появление объекта', obj, frame)
-        # Тревога 2: объект слишком долго в кадре
-        if obj.get('long_stay') and tid not in _alerted_long:
+        if long_on and obj.get('long_stay') and tid not in _alerted_long and \
+                _cooldown_ok('long'):
             _alerted_long.add(tid)
             save_event('Долгое нахождение', obj, frame)
 
@@ -132,9 +183,9 @@ def handle_events(frame, detections: list):
 
 def capture_loop():
     global frame_buffer, current_detections, current_class_counts
-    global detection_fps, running, video_clip_buffer
+    global current_zone_stats, detection_fps, running, video_clip_buffer
 
-    source = _parse_video_source(SETTINGS.get('video_source', '0'))
+    source = _parse_video_source(SETTINGS.get('video_source', 'test_videos/test_video3.mp4'))
     cap = cv2.VideoCapture(source)
 
     if not cap.isOpened():
@@ -150,7 +201,7 @@ def capture_loop():
         fps=int(video_fps),
         pre_seconds=SETTINGS.get('clip_pre_seconds', 10),
         post_seconds=SETTINGS.get('clip_post_seconds', 10),
-        out_dir='data/detections',
+        out_dir=MEDIA_DIR,
     )
 
     frame_count   = 0
@@ -170,13 +221,19 @@ def capture_loop():
         last_frame_t = time.time()
 
         processed, dets, counts = detector.process_frame(frame)
-        frame_buffer        = processed
+
+        # Рисуем зоны поверх кадра — они видны в потоке и попадают в скриншоты.
+        zone_manager.draw(processed)
+
         current_detections  = dets
         current_class_counts = counts
 
         if detector.enabled:
+            handle_events(processed, dets)        # тревоги по зонам/глобальные
             video_clip_buffer.add_frame(processed)
-            handle_events(processed, dets)
+            current_zone_stats = zone_manager.get_live()
+
+        frame_buffer = processed
 
         # Подсчёт FPS
         frame_count += 1
@@ -268,6 +325,7 @@ async def api_detections():
         'fps':               detection_fps,
         'objects':           current_detections,
         'class_counts':      current_class_counts,
+        'zones':             current_zone_stats,   # живые метрики по зонам
     }
 
 
@@ -275,13 +333,18 @@ async def api_detections():
 async def api_start():
     _alerted_appear.clear()
     _alerted_long.clear()
+    _last_global_event.clear()
+    zone_manager.reset_runtime()
     detector.set_enabled(True)
     return {'status': 'started'}
 
 
 @app.post('/api/detection/stop')
 async def api_stop():
+    global current_zone_stats
     detector.set_enabled(False)
+    zone_manager.reset_runtime()           # обнуляем живые счётчики зон
+    current_zone_stats = zone_manager.get_live()
     return {'status': 'stopped'}
 
 
@@ -294,23 +357,50 @@ async def api_events(
     event_type: str = '',
     date_from: str = '',
     date_to: str = '',
+    zone: str = '',
 ):
     et    = event_type or None
     df    = date_from  or None
     dt    = date_to    or None
-    total = database.count_events(et, df, dt)
+    zn    = zone       or None
+    total = database.count_events(et, df, dt, zn)
     items = database.get_events(
         limit=per_page,
         offset=(page - 1) * per_page,
-        event_type=et, date_from=df, date_to=dt,
+        event_type=et, date_from=df, date_to=dt, zone=zn,
     )
     return {'events': items, 'total': total, 'page': page, 'per_page': per_page}
+
+
+@app.get('/api/events/zone_report')
+async def api_zone_report(date_from: str = '', date_to: str = ''):
+    """Отдельная отчётность по зонам (сводка тревог по каждой зоне)."""
+    return {'report': database.zone_report(date_from or None, date_to or None)}
 
 
 @app.post('/api/events/clear')
 async def api_events_clear():
     database.clear_events()
     return {'status': 'cleared'}
+
+
+# ─── API: зоны срабатывания ──────────────────────────────────────────────────
+
+@app.get('/api/zones')
+async def api_get_zones():
+    """Текущие зоны (для рисования на плеере и редактирования правил)."""
+    return {'zones': SETTINGS.get('zones', [])}
+
+
+@app.post('/api/zones')
+async def api_save_zones(request: Request):
+    """Сохраняет список зон и сразу применяет его к менеджеру зон (без рестарта)."""
+    global SETTINGS
+    data = await request.json()
+    zones = data.get('zones', [])
+    SETTINGS = config.save_settings({'zones': zones})
+    zone_manager.update_zones(zones)
+    return {'status': 'saved', 'zones': zones}
 
 
 # ─── API: настройки ──────────────────────────────────────────────────────────
@@ -337,6 +427,8 @@ async def api_save_settings(request: Request):
         api_key=SETTINGS.get('cloud_api_key', ''),
         enabled=SETTINGS.get('cloud_sync_enabled', False),
     )
+    zone_manager.update_zones(SETTINGS.get('zones', []))
+    zone_manager.cooldown_default = SETTINGS.get('event_cooldown_seconds', 15)
     return {'status': 'saved', 'settings': SETTINGS}
 
 

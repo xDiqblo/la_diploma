@@ -12,7 +12,10 @@ import threading
 
 import requests
 
-import database
+# Раньше здесь было `import database`, и при импорте через пакет core этот модуль
+# не находился — фоновая синхронизация падала и по факту не работала. Импортируем
+# через пакет, чтобы облачная выгрузка действительно запускалась.
+from core import database
 
 SYNC_INTERVAL = 30  # секунд между попытками синхронизации
 
@@ -55,7 +58,9 @@ class CloudSync:
 
     def _sync_batch(self):
         """Отправляет пачку несинхронизированных событий."""
-        events = database.get_unsynced(limit=20)
+        # min_age_seconds — даём видеоклипу (пишется асинхронно) время записаться,
+        # чтобы он успел уйти в облако вместе с событием.
+        events = database.get_unsynced(limit=20, min_age_seconds=20)
         if not events:
             return
 
@@ -63,7 +68,7 @@ class CloudSync:
 
         for ev in events:
             try:
-                # Метаданные события
+                # Метаданные события (вместе с зоной срабатывания)
                 payload = {
                     'id':         ev['id'],
                     'timestamp':  ev['timestamp'],
@@ -71,6 +76,7 @@ class CloudSync:
                     'class_name': ev['class_name'],
                     'track_id':   ev['track_id'],
                     'confidence': ev['confidence'],
+                    'zone':       ev.get('zone'),
                 }
                 resp = requests.post(
                     f'{self.cloud_url}/api/events',
@@ -82,19 +88,28 @@ class CloudSync:
 
                 database.mark_synced(ev['id'])
 
-                # Скриншот отправляем отдельным запросом
-                shot = ev.get('screenshot')
-                if shot and os.path.exists(shot):
-                    with open(shot, 'rb') as f:
-                        requests.post(
-                            f'{self.cloud_url}/api/events/{ev["id"]}/screenshot',
-                            files={'file': f},
-                            headers=headers,
-                            timeout=10,
-                        )
+                # Медиа выгружаем отдельными запросами в облачное хранилище.
+                self._upload_media(ev, headers)
 
             except requests.exceptions.ConnectionError:
                 print('[CloudSync] Облако недоступно, следующая попытка через 30 сек')
                 break  # не теряем время на остальные, облако недоступно
             except Exception as e:
                 print(f'[CloudSync] Ошибка события {ev["id"]}: {e}')
+
+    def _upload_media(self, ev: dict, headers: dict):
+        """Выгружает скриншот и видеоклип события в облачное хранилище."""
+        shot = ev.get('screenshot')
+        if shot and os.path.exists(shot):
+            with open(shot, 'rb') as f:
+                requests.post(
+                    f'{self.cloud_url}/api/events/{ev["id"]}/screenshot',
+                    files={'file': f}, headers=headers, timeout=10,
+                )
+        clip = ev.get('video_clip')
+        if clip and os.path.exists(clip):
+            with open(clip, 'rb') as f:
+                requests.post(
+                    f'{self.cloud_url}/api/events/{ev["id"]}/clip',
+                    files={'file': f}, headers=headers, timeout=30,
+                )

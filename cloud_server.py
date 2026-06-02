@@ -45,9 +45,16 @@ def cloud_init_db():
                 class_name  TEXT,
                 track_id    INTEGER,
                 confidence  REAL,
-                screenshot  TEXT
+                zone        TEXT,
+                screenshot  TEXT,
+                video_clip  TEXT
             )
         """)
+        # Миграция облачной БД, если она была создана старой версией.
+        cols = {r[1] for r in c.execute("PRAGMA table_info(events)").fetchall()}
+        for col in ('zone', 'video_clip'):
+            if col not in cols:
+                c.execute(f"ALTER TABLE events ADD COLUMN {col} TEXT")
         c.commit()
         c.close()
 
@@ -58,12 +65,13 @@ def cloud_add(ev: dict) -> bool:
         c = _conn()
         c.execute("""
             INSERT OR IGNORE INTO events
-            (id, received_at, timestamp, event_type, class_name, track_id, confidence)
-            VALUES (?,?,?,?,?,?,?)""",
+            (id, received_at, timestamp, event_type, class_name, track_id, confidence, zone)
+            VALUES (?,?,?,?,?,?,?,?)""",
             (ev.get('id'),
              datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
              ev.get('timestamp'), ev.get('event_type'),
-             ev.get('class_name'), ev.get('track_id'), ev.get('confidence')),
+             ev.get('class_name'), ev.get('track_id'), ev.get('confidence'),
+             ev.get('zone')),
         )
         c.commit()
         changed = c.execute('SELECT changes()').fetchone()[0]
@@ -71,22 +79,26 @@ def cloud_add(ev: dict) -> bool:
         return changed > 0
 
 
-def cloud_set_screenshot(event_id: int, path: str):
+def cloud_set_media(event_id: int, column: str, path: str):
+    """Записывает путь к загруженному медиа (screenshot или video_clip)."""
+    if column not in ('screenshot', 'video_clip'):
+        return
     with _lock:
         c = _conn()
-        c.execute("UPDATE events SET screenshot=? WHERE id=?", (path, event_id))
+        c.execute(f"UPDATE events SET {column}=? WHERE id=?", (path, event_id))
         c.commit()
         c.close()
 
 
 def cloud_get_events(limit=20, offset=0, event_type=None,
-                     date_from=None, date_to=None):
+                     date_from=None, date_to=None, zone=None):
     with _lock:
         c = _conn()
         cl, pr = [], []
         if event_type: cl.append("event_type=?"); pr.append(event_type)
         if date_from:  cl.append("timestamp>=?"); pr.append(date_from)
         if date_to:    cl.append("timestamp<=?"); pr.append(date_to + ' 23:59:59')
+        if zone:       cl.append("zone=?");       pr.append(zone)
         w = ("WHERE " + " AND ".join(cl)) if cl else ""
         rows  = c.execute(f"SELECT * FROM events {w} ORDER BY id DESC LIMIT ? OFFSET ?",
                           (*pr, limit, offset)).fetchall()
@@ -103,6 +115,20 @@ def cloud_stats():
             SELECT substr(timestamp,1,10) AS day, COUNT(*) AS cnt
             FROM events
             GROUP BY day ORDER BY day DESC LIMIT 30
+        """).fetchall()
+        c.close()
+        return [dict(r) for r in rows]
+
+
+def cloud_zone_report():
+    """Отдельная отчётность по зонам в облаке (для тонкого клиента)."""
+    with _lock:
+        c = _conn()
+        rows = c.execute("""
+            SELECT COALESCE(zone, 'Без зоны (весь кадр)') AS zone,
+                   COUNT(*) AS total
+            FROM events
+            GROUP BY zone ORDER BY total DESC
         """).fetchall()
         c.close()
         return [dict(r) for r in rows]
@@ -168,7 +194,20 @@ async def recv_screenshot(event_id: int,
     dest = os.path.join(CLOUD_STOR, f'shot_{event_id}.jpg')
     with open(dest, 'wb') as f:
         shutil.copyfileobj(file.file, f)
-    cloud_set_screenshot(event_id, f'cloud_storage/shot_{event_id}.jpg')
+    cloud_set_media(event_id, 'screenshot', f'cloud_storage/shot_{event_id}.jpg')
+    return {'status': 'ok'}
+
+
+@app.post('/api/events/{event_id}/clip')
+async def recv_clip(event_id: int,
+                    file: UploadFile = File(...),
+                    x_api_key: str = Header(default=None)):
+    """Приём видеоклипа события в облачное хранилище."""
+    _check_key(x_api_key)
+    dest = os.path.join(CLOUD_STOR, f'clip_{event_id}.mp4')
+    with open(dest, 'wb') as f:
+        shutil.copyfileobj(file.file, f)
+    cloud_set_media(event_id, 'video_clip', f'cloud_storage/clip_{event_id}.mp4')
     return {'status': 'ok'}
 
 
@@ -177,20 +216,21 @@ async def recv_screenshot(event_id: int,
 @app.get('/api/cloud/events')
 async def api_cloud_events(
     page: int = 1, per_page: int = 10,
-    event_type: str = '', date_from: str = '', date_to: str = '',
+    event_type: str = '', date_from: str = '', date_to: str = '', zone: str = '',
 ):
     items, total = cloud_get_events(
         limit=per_page, offset=(page - 1) * per_page,
         event_type=event_type or None,
         date_from=date_from or None,
         date_to=date_to or None,
+        zone=zone or None,
     )
     return {'events': items, 'total': total, 'page': page, 'per_page': per_page}
 
 
 @app.get('/api/cloud/stats')
 async def api_cloud_stats():
-    return {'stats': cloud_stats()}
+    return {'stats': cloud_stats(), 'zones': cloud_zone_report()}
 
 
 # ─── заглушка авторизации ────────────────────────────────────────────────────

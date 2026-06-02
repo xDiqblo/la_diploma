@@ -210,9 +210,36 @@ input[type=range]::-webkit-slider-thumb{
     <div class="sh">Тревоги и сохранение</div>
     <div class="sbody">
       <div class="field">
+        <div class="hint" style="background:rgba(0,200,255,.06);border:1px solid var(--bord);border-radius:4px;padding:10px;line-height:1.5">
+          ⚑ Основные тревоги настраиваются <b>зонами срабатывания</b> прямо на видео
+          (страница «Монитор» → кнопка «✎ Зоны»). Это убирает «мусорные» события:
+          тревога возникает только в нужной области кадра, а не на каждую машину.
+          Опции ниже — это запасные <b>глобальные</b> тревоги на весь кадр (по умолчанию выключены).
+        </div>
+      </div>
+      <div class="field">
         <label>Порог уверенности для тревоги</label>
         <input type="number" id="alert_confidence" min="0.1" max="0.99" step="0.05" style="max-width:120px">
-        <div class="hint">Событие создаётся только если уверенность ≥ этого значения.</div>
+        <div class="hint">Глобальное событие создаётся только если уверенность ≥ этого значения.</div>
+      </div>
+      <div class="field">
+        <label>Антидребезг тревог, секунд</label>
+        <input type="number" id="event_cooldown_seconds" min="0" max="600" step="1" style="max-width:120px">
+        <div class="hint">Минимальная пауза между однотипными тревогами — чтобы не плодить дубли.</div>
+      </div>
+      <div class="field">
+        <div class="toggle-row">
+          <label>Глобальная тревога на появление объекта</label>
+          <label class="toggle"><input type="checkbox" id="alert_on_appearance"><div class="tslider"></div></label>
+        </div>
+        <div class="hint">⚠ Шумный режим: событие на КАЖДЫЙ новый объект во всём кадре. По умолчанию выкл.</div>
+      </div>
+      <div class="field">
+        <div class="toggle-row">
+          <label>Глобальная тревога на долгое нахождение</label>
+          <label class="toggle"><input type="checkbox" id="global_long_stay_alerts"><div class="tslider"></div></label>
+        </div>
+        <div class="hint">Объект дольше порога «долгого нахождения» в любом месте кадра → событие.</div>
       </div>
       <div class="field">
         <div class="toggle-row">
@@ -310,6 +337,7 @@ async function loadSettings(){
 
   // простые поля
   const simple=['video_source','frame_skip','long_stay_seconds','alert_confidence',
+                'event_cooldown_seconds',
                 'clip_pre_seconds','clip_post_seconds','telegram_token','telegram_chat_id',
                 'cloud_url','cloud_api_key'];
   simple.forEach(f=>{
@@ -323,7 +351,8 @@ async function loadSettings(){
   document.getElementById('cv').textContent=parseFloat(ct.value).toFixed(2);
 
   // чекбоксы-тогглы
-  ['save_screenshots','save_video_clips','telegram_enabled','cloud_sync_enabled'].forEach(f=>{
+  ['alert_on_appearance','global_long_stay_alerts',
+   'save_screenshots','save_video_clips','telegram_enabled','cloud_sync_enabled'].forEach(f=>{
     const el=document.getElementById(f); if(el) el.checked=!!s[f];
   });
 
@@ -348,6 +377,9 @@ async function saveSettings(){
     active_classes:      active,
     long_stay_seconds:   parseInt(document.getElementById('long_stay_seconds').value),
     alert_confidence:    parseFloat(document.getElementById('alert_confidence').value),
+    event_cooldown_seconds: parseInt(document.getElementById('event_cooldown_seconds').value),
+    alert_on_appearance: document.getElementById('alert_on_appearance').checked,
+    global_long_stay_alerts: document.getElementById('global_long_stay_alerts').checked,
     save_screenshots:    document.getElementById('save_screenshots').checked,
     save_video_clips:    document.getElementById('save_video_clips').checked,
     clip_pre_seconds:    parseInt(document.getElementById('clip_pre_seconds').value),

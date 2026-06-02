@@ -85,6 +85,25 @@ td.ts{font-family:var(--mono);font-size:12px;color:var(--mut)}
 a.clip{color:var(--grn);font-weight:700;text-decoration:none;font-size:13px}
 a.clip:hover{text-decoration:underline}
 .empty{text-align:center;color:var(--mut);padding:40px;font-size:15px}
+.b-zone{background:rgba(255,204,0,.12);color:var(--ylw);border:1px solid var(--ylw)}
+.zchip{display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;
+  font-family:var(--mono);background:var(--surf);border:1px solid var(--bord);color:var(--txt)}
+
+/* ── отчёт по зонам ───────────────────────────────────── */
+.zreport{
+  background:var(--card);border:1px solid var(--bord);border-radius:6px;
+  margin-bottom:14px;overflow:hidden
+}
+.zr-head{padding:10px 16px;font-size:11px;font-weight:700;letter-spacing:2px;
+  text-transform:uppercase;color:var(--acc);border-bottom:1px solid var(--bord)}
+.zr-grid{display:flex;flex-wrap:wrap;gap:10px;padding:14px 16px}
+.zr-card{flex:1;min-width:150px;background:var(--surf);border:1px solid var(--bord);
+  border-radius:5px;padding:12px 14px}
+.zr-name{font-weight:700;color:#fff;font-size:14px;margin-bottom:8px}
+.zr-row{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:12px;color:var(--mut);padding:2px 0}
+.zr-row b{color:var(--ylw)}
+.zr-total{font-size:26px;font-family:var(--mono);font-weight:700;color:var(--acc);line-height:1}
 
 /* ── пагинация ────────────────────────────────────────── */
 .pagination{
@@ -159,13 +178,26 @@ a.clip:hover{text-decoration:underline}
       <label>Тип события</label>
       <select id="f_type">
         <option value="">Все</option>
+        <option value="Зона: вход">Зона: вход</option>
+        <option value="Зона: задержка">Зона: задержка</option>
+        <option value="Зона: скопление">Зона: скопление</option>
         <option value="Появление объекта">Появление объекта</option>
         <option value="Долгое нахождение">Долгое нахождение</option>
       </select>
     </div>
+    <div class="fg">
+      <label>Зона</label>
+      <select id="f_zone"><option value="">Все зоны</option></select>
+    </div>
     <button class="btn btn-filter" onclick="load(1)">Применить</button>
     <button class="btn btn-clear"  onclick="clearAll()">🗑 Очистить</button>
     <div class="total" id="total">Событий: —</div>
+  </div>
+
+  <!-- Отдельная отчётность по зонам -->
+  <div class="zreport">
+    <div class="zr-head">Отчёт по зонам</div>
+    <div class="zr-grid" id="zreport"><div class="empty" style="padding:16px">Загрузка…</div></div>
   </div>
 
   <!-- Таблица -->
@@ -176,6 +208,7 @@ a.clip:hover{text-decoration:underline}
           <th>#</th>
           <th>Время</th>
           <th>Тип события</th>
+          <th>Зона</th>
           <th>Объект</th>
           <th>Уверенность</th>
           <th>Скриншот</th>
@@ -183,7 +216,7 @@ a.clip:hover{text-decoration:underline}
         </tr>
       </thead>
       <tbody id="tbody">
-        <tr><td colspan="7" class="empty">Загрузка…</td></tr>
+        <tr><td colspan="8" class="empty">Загрузка…</td></tr>
       </tbody>
     </table>
 
@@ -203,28 +236,37 @@ a.clip:hover{text-decoration:underline}
 <script>
 let curPage=1;
 
+function badgeFor(type){
+  // выбираем цвет плашки по типу события
+  if(type&&type.startsWith('Зона:')) return 'b-zone';
+  if(type==='Долгое нахождение')     return 'b-long';
+  return 'b-appear';
+}
+
 async function load(page=1){
   curPage=page;
   const from=document.getElementById('f_from').value;
   const to  =document.getElementById('f_to').value;
   const type=document.getElementById('f_type').value;
-  const qs=new URLSearchParams({page,per_page:10,event_type:type,date_from:from,date_to:to});
+  const zone=document.getElementById('f_zone').value;
+  const qs=new URLSearchParams({page,per_page:10,event_type:type,date_from:from,date_to:to,zone});
   const d=await(await fetch('/api/events?'+qs)).json();
 
   document.getElementById('total').textContent='Событий: '+d.total;
   renderTable(d.events);
   renderPager(d.total,d.page,d.per_page);
+  loadZoneReport();
 }
 
 function renderTable(events){
   const tb=document.getElementById('tbody');
   if(!events.length){
-    tb.innerHTML='<tr><td colspan="7" class="empty">Нет событий</td></tr>';
+    tb.innerHTML='<tr><td colspan="8" class="empty">Нет событий</td></tr>';
     return;
   }
   tb.innerHTML=events.map(e=>{
-    const isLong=e.event_type==='Долгое нахождение';
-    const badge=`<span class="badge ${isLong?'b-long':'b-appear'}">${e.event_type}</span>`;
+    const badge=`<span class="badge ${badgeFor(e.event_type)}">${e.event_type}</span>`;
+    const zone=e.zone?`<span class="zchip">${e.zone}</span>`:'<span style="color:var(--mut)">весь кадр</span>';
     const obj=e.class_name?`${e.class_name} · ID ${e.track_id??'—'}` :'—';
     const conf=e.confidence!=null?e.confidence.toFixed(2):'—';
     const shot=e.screenshot
@@ -237,12 +279,45 @@ function renderTable(events){
       <td class="ts">${e.id}</td>
       <td class="ts">${e.timestamp}</td>
       <td>${badge}</td>
+      <td>${zone}</td>
       <td>${obj}</td>
       <td class="ts">${conf}</td>
       <td>${shot}</td>
       <td>${clip}</td>
     </tr>`;
   }).join('');
+}
+
+// — отдельная отчётность по зонам —
+async function loadZoneReport(){
+  try{
+    const from=document.getElementById('f_from').value;
+    const to  =document.getElementById('f_to').value;
+    const qs=new URLSearchParams({date_from:from,date_to:to});
+    const d=await(await fetch('/api/events/zone_report?'+qs)).json();
+    const rep=d.report||[];
+    const box=document.getElementById('zreport');
+    if(!rep.length){box.innerHTML='<div class="empty" style="padding:16px">Тревог пока нет</div>';return}
+    box.innerHTML=rep.map(r=>`
+      <div class="zr-card">
+        <div class="zr-name">${r.zone}</div>
+        <div class="zr-total">${r.total}</div>
+        <div class="zr-row"><span>вход</span><b>${r.presence||0}</b></div>
+        <div class="zr-row"><span>задержка</span><b>${r.long_stay||0}</b></div>
+        <div class="zr-row"><span>скопление</span><b>${r.crowd||0}</b></div>
+      </div>`).join('');
+  }catch(e){console.warn(e)}
+}
+
+// — наполняем фильтр зон названиями из настроек —
+async function loadZoneFilter(){
+  try{
+    const d=await(await fetch('/api/zones')).json();
+    const sel=document.getElementById('f_zone');
+    (d.zones||[]).forEach(z=>{
+      const o=document.createElement('option');o.value=z.name;o.textContent=z.name;sel.appendChild(o);
+    });
+  }catch(e){console.warn(e)}
 }
 
 function renderPager(total,page,per){
@@ -257,14 +332,14 @@ function renderPager(total,page,per){
 }
 
 function showModal(e){
-  const isLong=e.event_type==='Долгое нахождение';
-  const badge=`<span class="badge ${isLong?'b-long':'b-appear'}">${e.event_type}</span>`;
+  const badge=`<span class="badge ${badgeFor(e.event_type)}">${e.event_type}</span>`;
   const img=e.screenshot?`<img class="mimg" src="/${e.screenshot}" alt="скриншот">`:'<div style="color:var(--mut);padding:20px;text-align:center">Скриншот отсутствует</div>';
   const clip=e.video_clip?`<a class="clip" href="/${e.video_clip}" target="_blank">▶ Скачать видеофрагмент</a>`:'—';
   document.getElementById('mcontent').innerHTML=`
     <div style="margin-bottom:14px;font-size:18px;font-weight:700">${badge}</div>
     <div class="mrow">
       <div class="mtag">Время<span>${e.timestamp}</span></div>
+      <div class="mtag">Зона<span>${e.zone??'весь кадр'}</span></div>
       <div class="mtag">Объект<span>${e.class_name??'—'}</span></div>
       <div class="mtag">ID<span>${e.track_id??'—'}</span></div>
       <div class="mtag">Уверенность<span>${e.confidence!=null?e.confidence.toFixed(2):'—'}</span></div>
@@ -286,6 +361,7 @@ async function clearAll(){
 }
 
 // Автообновление каждые 5 секунд
+loadZoneFilter();
 load(1);
 setInterval(()=>load(curPage),5000);
 </script>

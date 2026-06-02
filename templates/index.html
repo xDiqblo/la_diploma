@@ -40,7 +40,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
 
 /* ── layout ───────────────────────────────────────────── */
 .layout{
-  display:grid;grid-template-columns:1fr 280px;
+  display:grid;grid-template-columns:1fr 300px;
   gap:14px;padding:14px 20px;
   max-width:1700px;margin:0 auto;
 }
@@ -53,19 +53,24 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
   aspect-ratio:16/9;
 }
 .video-wrap img{width:100%;height:100%;object-fit:contain;display:block}
-.vid-badges{position:absolute;top:10px;left:10px;display:flex;gap:8px}
+.vid-badges{position:absolute;top:10px;left:10px;display:flex;gap:8px;z-index:3}
 .badge{
   padding:3px 10px;border-radius:3px;font-size:11px;font-weight:700;
   letter-spacing:1px;font-family:var(--mono)
 }
 .b-live{background:var(--red);color:#fff}
 .b-fps{background:rgba(0,0,0,.7);color:var(--acc);border:1px solid var(--acc)}
-/* сканлиния */
-.video-wrap::after{
-  content:'';position:absolute;inset:0;pointer-events:none;
-  background:repeating-linear-gradient(
-    to bottom,transparent 0,transparent 3px,rgba(0,0,0,.07) 3px,rgba(0,0,0,.07) 4px)
+.b-edit{background:var(--ylw);color:#000;display:none}
+.b-edit.on{display:inline-block}
+
+/* SVG-слой рисования зон поверх видео (виден только в режиме редактирования) */
+#zoneSvg{
+  position:absolute;inset:0;width:100%;height:100%;
+  z-index:2;display:none;cursor:crosshair
 }
+#zoneSvg.editing{display:block}
+.zpoly{fill-opacity:.18;stroke-width:2;vector-effect:non-scaling-stroke}
+.zpoint{fill:#fff;stroke:#000;stroke-width:1;vector-effect:non-scaling-stroke}
 
 /* ── кнопки управления ────────────────────────────────── */
 .ctrl{display:flex;gap:10px;margin-top:12px}
@@ -86,6 +91,23 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
 }
 .btn-stop:hover{box-shadow:0 0 28px rgba(255,61,113,.45);transform:translateY(-1px)}
 .btn:disabled{opacity:.4;cursor:default;transform:none !important;box-shadow:none !important}
+
+/* ── панель рисования зон ─────────────────────────────── */
+.zonebar{
+  display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  margin-top:10px;padding:10px 12px;
+  background:var(--card);border:1px solid var(--bord);border-radius:6px
+}
+.zb-btn{
+  padding:7px 14px;border:1px solid var(--bord);border-radius:4px;
+  background:var(--surf);color:var(--txt);font-family:var(--font);
+  font-size:13px;font-weight:600;letter-spacing:.5px;cursor:pointer;transition:.2s
+}
+.zb-btn:hover{border-color:var(--acc);color:var(--acc)}
+.zb-btn.primary{background:var(--acc);color:#000;border-color:var(--acc)}
+.zb-btn.warn{border-color:var(--red);color:var(--red)}
+.zb-btn:disabled{opacity:.4;cursor:default}
+.zb-hint{font-size:12px;color:var(--mut);font-family:var(--mono)}
 
 /* ── метрики ──────────────────────────────────────────── */
 .metrics{
@@ -128,7 +150,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
 .sv.on{color:var(--grn)}.sv.off{color:var(--red)}
 
 /* список объектов */
-.objlist{padding:6px;max-height:230px;overflow-y:auto}
+.objlist{padding:6px;max-height:200px;overflow-y:auto}
 .objlist::-webkit-scrollbar{width:3px}
 .objlist::-webkit-scrollbar-thumb{background:var(--bord)}
 .objitem{
@@ -143,6 +165,57 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
 .otime{color:var(--acc2)}
 .olong{color:var(--red) !important}
 .empty{text-align:center;color:var(--mut);padding:24px;font-size:13px}
+
+/* список зон (метрики + управление) */
+.zlist{padding:6px;max-height:280px;overflow-y:auto}
+.zitem{
+  border:1px solid var(--bord);border-radius:5px;
+  padding:8px 10px;margin-bottom:8px;background:var(--surf)
+}
+.zitem:last-child{margin-bottom:0}
+.zhead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.zswatch{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.zname{font-weight:700;color:#fff;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zrule{font-size:10px;font-family:var(--mono);color:var(--acc);
+  border:1px solid var(--acc);border-radius:3px;padding:1px 6px}
+.zoff{opacity:.45}
+.zmetrics{display:flex;gap:10px;font-family:var(--mono);font-size:12px;margin-bottom:6px}
+.zm b{color:var(--ylw)}
+.zm span{color:var(--mut)}
+.zactions{display:flex;gap:6px}
+.zact{
+  flex:1;padding:4px 0;border:1px solid var(--bord);border-radius:3px;
+  background:none;color:var(--mut);font-family:var(--font);font-size:12px;
+  font-weight:600;cursor:pointer;transition:.2s
+}
+.zact:hover{border-color:var(--acc);color:var(--acc)}
+.zact.del:hover{border-color:var(--red);color:var(--red)}
+
+/* ── модалка настройки зоны ───────────────────────────── */
+.modal{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);
+  align-items:center;justify-content:center;padding:20px}
+.modal.open{display:flex}
+.mbox{background:var(--card);border:1px solid var(--bord);border-radius:8px;
+  max-width:440px;width:100%;max-height:90vh;overflow-y:auto;padding:22px;position:relative}
+.mbox h3{color:var(--acc);font-size:16px;letter-spacing:1px;margin-bottom:16px}
+.mf{margin-bottom:13px}
+.mf label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+.mf input[type=text],.mf input[type=number],.mf select{
+  width:100%;padding:8px 10px;border-radius:4px;border:1px solid var(--bord);
+  background:var(--surf);color:var(--txt);font-family:var(--mono);font-size:13px}
+.mf input:focus,.mf select:focus{outline:none;border-color:var(--acc)}
+.mrow2{display:flex;gap:10px}
+.mrow2>div{flex:1}
+.mchecks{display:flex;flex-wrap:wrap;gap:8px}
+.mchk{display:flex;align-items:center;gap:5px;font-size:13px;font-family:var(--mono);
+  background:var(--surf);border:1px solid var(--bord);border-radius:4px;padding:5px 9px;cursor:pointer}
+.mtoggle{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600}
+.mactions{display:flex;gap:10px;margin-top:18px}
+.mbtn{flex:1;padding:10px 0;border:none;border-radius:5px;font-family:var(--font);
+  font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer}
+.mbtn-save{background:linear-gradient(135deg,#00b04a,#00e676);color:#000}
+.mbtn-cancel{background:var(--surf);color:var(--mut);border:1px solid var(--bord)}
+.hide{display:none !important}
 </style>
 </head>
 <body>
@@ -164,12 +237,24 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
 
   <!-- Видео + управление + метрики -->
   <div>
-    <div class="video-wrap">
+    <div class="video-wrap" id="videoWrap">
       <img id="feed" src="/video_feed" alt="Поток">
+      <!-- слой рисования зон -->
+      <svg id="zoneSvg" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
       <div class="vid-badges">
         <span class="badge b-live">LIVE</span>
         <span class="badge b-fps" id="fpsbadge">0 FPS</span>
+        <span class="badge b-edit" id="editBadge">✎ РЕДАКТИРОВАНИЕ ЗОН</span>
       </div>
+    </div>
+
+    <!-- панель управления зонами -->
+    <div class="zonebar">
+      <button class="zb-btn" id="zEdit"   onclick="toggleEdit()">✎ Зоны</button>
+      <button class="zb-btn hide" id="zNew"    onclick="startDraw()">➕ Новая зона</button>
+      <button class="zb-btn hide" id="zFinish" onclick="finishDraw()" disabled>✓ Замкнуть</button>
+      <button class="zb-btn hide" id="zUndo"   onclick="undoPoint()" disabled>↶ Отменить точку</button>
+      <span class="zb-hint" id="zHint"></span>
     </div>
 
     <div class="ctrl">
@@ -195,25 +280,88 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
       <div class="srow"><span class="sk">Аптайм</span><span class="sv" id="suptime">—</span></div>
     </div>
 
+    <!-- Зоны срабатывания: живые метрики + управление -->
+    <div class="panel">
+      <div class="ph">ЗОНЫ СРАБАТЫВАНИЯ</div>
+      <div class="zlist" id="zlist"><div class="empty">Зоны не заданы.<br>Нажмите «✎ Зоны».</div></div>
+    </div>
+
     <div class="panel">
       <div class="ph">ОБЪЕКТЫ В КАДРЕ</div>
       <div class="objlist" id="objlist"><div class="empty">Нет объектов</div></div>
     </div>
 
-    <div class="panel">
-      <div class="ph">СЧЁТЧИК КЛАССОВ</div>
-      <div class="srow"><span class="sk">Автомобили</span><span class="sv" id="scar">0</span></div>
-      <div class="srow"><span class="sk">Автобусы</span><span class="sv" id="sbus">0</span></div>
-      <div class="srow"><span class="sk">Грузовики</span><span class="sv" id="struck">0</span></div>
-      <div class="srow"><span class="sk">Люди</span><span class="sv" id="spers">0</span></div>
-    </div>
+  </div>
+</div>
 
+<!-- Модалка настройки правил зоны -->
+<div class="modal" id="zmodal">
+  <div class="mbox">
+    <h3 id="zmTitle">Настройка зоны</h3>
+    <div class="mf">
+      <label>Название зоны</label>
+      <input type="text" id="zmName" placeholder="например, Колонка 1">
+    </div>
+    <div class="mf">
+      <label>Правило срабатывания</label>
+      <select id="zmRule" onchange="zmRuleChanged()">
+        <option value="presence">Присутствие — объект вошёл в зону</option>
+        <option value="long_stay">Задержка — объект стоит в зоне дольше N сек</option>
+        <option value="count">Скопление — в зоне сразу ≥ N объектов</option>
+      </select>
+    </div>
+    <div class="mrow2">
+      <div class="mf zm-dwell">
+        <label>Задержка, сек</label>
+        <input type="number" id="zmDwell" min="1" max="600" value="20">
+      </div>
+      <div class="mf zm-count">
+        <label>Порог, объектов</label>
+        <input type="number" id="zmCount" min="1" max="50" value="3">
+      </div>
+    </div>
+    <div class="mrow2">
+      <div class="mf">
+        <label>Порог уверенности</label>
+        <input type="number" id="zmConf" min="0.1" max="0.99" step="0.05" value="0.5">
+      </div>
+      <div class="mf">
+        <label>Пауза между тревогами, сек</label>
+        <input type="number" id="zmCooldown" min="0" max="600" value="30">
+      </div>
+    </div>
+    <div class="mf">
+      <label>Учитывать классы (пусто = все активные)</label>
+      <div class="mchecks" id="zmClasses">
+        <label class="mchk"><input type="checkbox" value="car">Авто</label>
+        <label class="mchk"><input type="checkbox" value="bus">Автобус</label>
+        <label class="mchk"><input type="checkbox" value="truck">Грузовик</label>
+        <label class="mchk"><input type="checkbox" value="person">Человек</label>
+      </div>
+    </div>
+    <div class="mf">
+      <label>Цвет зоны</label>
+      <input type="color" id="zmColor" value="#00c8ff" style="width:60px;height:34px;border:none;background:none">
+    </div>
+    <div class="mf mtoggle">
+      <span>Сохранять скриншот/видео по тревоге</span>
+      <input type="checkbox" id="zmSaveMedia" checked>
+    </div>
+    <div class="mf mtoggle">
+      <span>Зона включена</span>
+      <input type="checkbox" id="zmEnabled" checked>
+    </div>
+    <div class="mactions">
+      <button class="mbtn mbtn-cancel" onclick="closeZModal()">Отмена</button>
+      <button class="mbtn mbtn-save" onclick="saveZModal()">Сохранить зону</button>
+    </div>
   </div>
 </div>
 
 <script>
 const t0 = Date.now();
 const COLORS = {car:'#4488ff',bus:'#ffaa44',truck:'#ff6020',person:'#00e676',motorcycle:'#cc88ff',bicycle:'#00bb88'};
+const RULE_NAMES = {presence:'присутствие',long_stay:'задержка',count:'скопление'};
 
 // Часы
 setInterval(()=>{
@@ -226,6 +374,197 @@ function fmt_uptime(){
   return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(v=>String(v).padStart(2,'0')).join(':');
 }
 
+/* ════════════ ЗОНЫ ════════════ */
+let zones=[];            // список зон (как в settings.json)
+let liveZones=[];        // живые метрики по зонам (с сервера)
+let editing=false;       // режим редактирования
+let drawing=null;        // массив точек рисуемой зоны [{x,y}] (0..1)
+let editingZoneId=null;  // id редактируемой существующей зоны (или null = новая)
+let pendingPoints=null;  // точки только что нарисованной зоны (ждём настройки правил)
+
+const svg=document.getElementById('zoneSvg');
+
+async function loadZones(){
+  try{
+    const d=await(await fetch('/api/zones')).json();
+    zones=d.zones||[];
+    renderZones();
+    renderZoneList();
+  }catch(e){console.warn(e)}
+}
+
+async function saveZones(){
+  await fetch('/api/zones',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({zones})
+  });
+}
+
+// — отрисовка SVG (полигоны существующих зон + текущий рисунок) —
+function renderZones(){
+  let html='';
+  zones.forEach(z=>{
+    if(!z.points||z.points.length<2) return;
+    const pts=z.points.map(p=>p[0]+','+p[1]).join(' ');
+    const op=z.enabled?'':'stroke-dasharray="0.02 0.01"';
+    html+=`<polygon class="zpoly" points="${pts}" style="fill:${z.color};stroke:${z.color}" ${op}></polygon>`;
+  });
+  if(drawing&&drawing.length){
+    const pts=drawing.map(p=>p.x+','+p.y).join(' ');
+    html+=`<polyline points="${pts}" style="fill:none;stroke:#ffcc00;stroke-width:2;vector-effect:non-scaling-stroke;stroke-dasharray:0.01 0.006"></polyline>`;
+    drawing.forEach(p=>{html+=`<circle class="zpoint" cx="${p.x}" cy="${p.y}" r="0.008"></circle>`});
+  }
+  svg.innerHTML=html;
+}
+
+// — список зон в сайдбаре (метрики + кнопки) —
+function renderZoneList(){
+  const el=document.getElementById('zlist');
+  if(!zones.length){
+    el.innerHTML='<div class="empty">Зоны не заданы.<br>Нажмите «✎ Зоны».</div>';
+    return;
+  }
+  const liveMap={}; liveZones.forEach(z=>liveMap[z.id]=z);
+  el.innerHTML=zones.map(z=>{
+    const lv=liveMap[z.id]||{count:0,total_events:0,visitors:0};
+    return `<div class="zitem ${z.enabled?'':'zoff'}">
+      <div class="zhead">
+        <span class="zswatch" style="background:${z.color}"></span>
+        <span class="zname">${z.name}</span>
+        <span class="zrule">${RULE_NAMES[z.rule]||z.rule}</span>
+      </div>
+      <div class="zmetrics">
+        <span class="zm"><span>в зоне:</span> <b>${lv.count}</b></span>
+        <span class="zm"><span>тревог:</span> <b>${lv.total_events}</b></span>
+        <span class="zm"><span>визитов:</span> <b>${lv.visitors}</b></span>
+      </div>
+      <div class="zactions">
+        <button class="zact" onclick="editZone('${z.id}')">✎ Правила</button>
+        <button class="zact" onclick="toggleZone('${z.id}')">${z.enabled?'⏸ Выкл':'▶ Вкл'}</button>
+        <button class="zact del" onclick="deleteZone('${z.id}')">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// — режим редактирования —
+function toggleEdit(){
+  editing=!editing;
+  svg.classList.toggle('editing',editing);
+  document.getElementById('editBadge').classList.toggle('on',editing);
+  document.getElementById('zEdit').classList.toggle('primary',editing);
+  document.getElementById('zEdit').textContent=editing?'✓ Готово':'✎ Зоны';
+  ['zNew','zFinish','zUndo'].forEach(id=>document.getElementById(id).classList.toggle('hide',!editing));
+  cancelDraw();
+  setHint(editing?'Нажмите «Новая зона», затем кликайте по видео, отмечая углы.':'');
+}
+function setHint(t){document.getElementById('zHint').textContent=t}
+
+function startDraw(){
+  drawing=[];
+  document.getElementById('zFinish').disabled=true;
+  document.getElementById('zUndo').disabled=true;
+  setHint('Кликайте по видео, чтобы поставить углы зоны (минимум 3).');
+  renderZones();
+}
+function cancelDraw(){drawing=null;renderZones()}
+
+function undoPoint(){
+  if(!drawing||!drawing.length) return;
+  drawing.pop();
+  document.getElementById('zFinish').disabled=drawing.length<3;
+  document.getElementById('zUndo').disabled=drawing.length===0;
+  renderZones();
+}
+
+// клик по видео в режиме рисования = добавить угол
+svg.addEventListener('click',e=>{
+  if(!editing||!drawing) return;
+  const r=svg.getBoundingClientRect();
+  const x=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));
+  const y=Math.min(1,Math.max(0,(e.clientY-r.top)/r.height));
+  drawing.push({x:+x.toFixed(4),y:+y.toFixed(4)});
+  document.getElementById('zFinish').disabled=drawing.length<3;
+  document.getElementById('zUndo').disabled=false;
+  renderZones();
+});
+
+function finishDraw(){
+  if(!drawing||drawing.length<3){alert('Нужно минимум 3 точки');return}
+  pendingPoints=drawing.map(p=>[p.x,p.y]);
+  editingZoneId=null;
+  openZModal({name:'',rule:'presence',min_confidence:0.5,dwell_seconds:20,
+              max_count:3,cooldown_seconds:30,color:'#00c8ff',classes:[],
+              save_media:true,enabled:true},'Новая зона');
+}
+
+/* ── модалка правил зоны ── */
+function openZModal(z,title){
+  document.getElementById('zmTitle').textContent=title;
+  document.getElementById('zmName').value=z.name||'';
+  document.getElementById('zmRule').value=z.rule||'presence';
+  document.getElementById('zmDwell').value=z.dwell_seconds??20;
+  document.getElementById('zmCount').value=z.max_count??3;
+  document.getElementById('zmConf').value=z.min_confidence??0.5;
+  document.getElementById('zmCooldown').value=z.cooldown_seconds??30;
+  document.getElementById('zmColor').value=z.color||'#00c8ff';
+  document.getElementById('zmSaveMedia').checked=z.save_media!==false;
+  document.getElementById('zmEnabled').checked=z.enabled!==false;
+  const cls=new Set(z.classes||[]);
+  document.querySelectorAll('#zmClasses input').forEach(cb=>cb.checked=cls.has(cb.value));
+  zmRuleChanged();
+  document.getElementById('zmodal').classList.add('open');
+}
+function closeZModal(){
+  document.getElementById('zmodal').classList.remove('open');
+  pendingPoints=null;editingZoneId=null;cancelDraw();
+}
+function zmRuleChanged(){
+  const r=document.getElementById('zmRule').value;
+  document.querySelector('.zm-dwell').style.display=(r==='long_stay')?'block':'none';
+  document.querySelector('.zm-count').style.display=(r==='count')?'block':'none';
+}
+function saveZModal(){
+  const name=document.getElementById('zmName').value.trim()||'Зона';
+  const classes=[...document.querySelectorAll('#zmClasses input:checked')].map(cb=>cb.value);
+  const data={
+    name,
+    rule:           document.getElementById('zmRule').value,
+    dwell_seconds:  parseInt(document.getElementById('zmDwell').value)||20,
+    max_count:      parseInt(document.getElementById('zmCount').value)||3,
+    min_confidence: parseFloat(document.getElementById('zmConf').value)||0.5,
+    cooldown_seconds:parseInt(document.getElementById('zmCooldown').value)||0,
+    color:          document.getElementById('zmColor').value,
+    classes,
+    save_media:     document.getElementById('zmSaveMedia').checked,
+    enabled:        document.getElementById('zmEnabled').checked,
+  };
+  if(editingZoneId){
+    const z=zones.find(z=>z.id===editingZoneId);
+    Object.assign(z,data);                 // обновляем правила, точки не трогаем
+  }else{
+    zones.push({id:'z'+Date.now(),points:pendingPoints,...data});
+  }
+  saveZones();
+  closeZModal();
+  renderZones();renderZoneList();
+}
+
+function editZone(id){
+  const z=zones.find(z=>z.id===id); if(!z) return;
+  editingZoneId=id;pendingPoints=null;
+  openZModal(z,'Правила зоны: '+z.name);
+}
+function toggleZone(id){
+  const z=zones.find(z=>z.id===id); if(!z) return;
+  z.enabled=!z.enabled;saveZones();renderZones();renderZoneList();
+}
+function deleteZone(id){
+  if(!confirm('Удалить зону?')) return;
+  zones=zones.filter(z=>z.id!==id);saveZones();renderZones();renderZoneList();
+}
+
+/* ════════════ ОПРОС СТАТУСА ════════════ */
 async function poll(){
   try{
     const d=await(await fetch('/api/detections')).json();
@@ -244,10 +583,10 @@ async function poll(){
     document.getElementById('mcar').textContent=cc.car||0;
     document.getElementById('mpers').textContent=cc.person||0;
     document.getElementById('mother').textContent=(cc.bus||0)+(cc.truck||0)+(cc.motorcycle||0);
-    document.getElementById('scar').textContent=cc.car||0;
-    document.getElementById('sbus').textContent=cc.bus||0;
-    document.getElementById('struck').textContent=cc.truck||0;
-    document.getElementById('spers').textContent=cc.person||0;
+
+    // живые метрики зон
+    liveZones=d.zones||[];
+    renderZoneList();
 
     const objs=d.objects||[];
     const ol=document.getElementById('objlist');
@@ -271,6 +610,7 @@ document.getElementById('bstop').onclick=async()=>{
   await fetch('/api/detection/stop',{method:'POST'}); poll();
 };
 
+loadZones();
 setInterval(poll,600); poll();
 </script>
 </body>
