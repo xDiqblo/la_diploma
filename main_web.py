@@ -1,3 +1,8 @@
+"""
+main_web.py — локальный веб-сервер (FastAPI) для системы видеонаблюдения АЗС.
+Запуск: python main_web.py
+Адрес: http://localhost:8000
+"""
 import cv2
 import time
 import threading
@@ -8,62 +13,74 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from detector import Detector
 import config
-import database
-import telegram_notify
-from video_buffer import VideoClipBuffer
+from core import telegram_notify, database
+from core.detector import Detector
+from core.video_buffer import VideoClipBuffer
+from core.cloud_sync import CloudSync
 
-# Папки для шаблонов и сохранённых тревог
-os.makedirs('templates', exist_ok=True)
-os.makedirs('detections', exist_ok=True)
-os.makedirs('static', exist_ok=True)
+# ─── создаём нужные папки ───────────────────────────────────────────────────
+for _d in ('templates', 'detections', 'static'):
+    os.makedirs(_d, exist_ok=True)
 
-# ========== Глобальные переменные ==========
-frame_buffer = None             # последний обработанный кадр (для MJPEG)
-current_detections = []         # текущие объекты в кадре
-current_class_counts = {}       # счётчики по классам
-detection_fps = 0               # FPS обработки
-capture_thread = None
-running = True
-video_clip_buffer = None        # кольцевой буфер видео (создаётся в потоке захвата)
+# ─── глобальные переменные ──────────────────────────────────────────────────
+frame_buffer = None            # последний кадр для MJPEG-стрима
+current_detections: list = []
+current_class_counts: dict = {}
+detection_fps: int = 0
+running: bool = True
+video_clip_buffer: VideoClipBuffer | None = None
 
-# Множества уже обработанных track_id (чтобы не плодить дубли событий)
-alerted_appearance = set()
-alerted_long_stay = set()
+# track_id, по которым уже создавались события (не дублируем)
+_alerted_appear: set = set()
+_alerted_long:   set = set()
 
-# Загружаем настройки из JSON
+# ─── загрузка настроек и инициализация зависимостей ─────────────────────────
 SETTINGS = config.load_settings()
 
-# Инициализация детектора с параметрами из настроек
+
+def _parse_video_source(src: str):
+    """Строка '0' → int(0) (USB-камера), иначе — RTSP/путь к файлу."""
+    try:
+        return int(src)
+    except ValueError:
+        return src
+
+
 detector = Detector(
-    model_path='yolov8n.pt',
+    model_path='model/yolov8n.pt',
     confidence_threshold=SETTINGS['confidence_threshold'],
     frame_skip=SETTINGS['frame_skip'],
-    treat_person_as_car=SETTINGS['treat_person_as_car'],
+    active_classes=SETTINGS['active_classes'],
     long_stay_seconds=SETTINGS['long_stay_seconds'],
 )
 
-# Источник видео (файл, RTSP-ссылка или индекс камеры, например 0)
-VIDEO_SOURCE = 'test_video3.mp4'
+cloud_sync = CloudSync(
+    cloud_url=SETTINGS.get('cloud_url', 'http://localhost:8001'),
+    api_key=SETTINGS.get('cloud_api_key', ''),
+    enabled=SETTINGS.get('cloud_sync_enabled', False),
+)
 
+# ─── сохранение события-тревоги ─────────────────────────────────────────────
 
-# ========== Сохранение события (тревоги) ==========
-def save_event(event_type, obj, frame):
-    """Сохраняет скриншот, запись в БД, видеофрагмент и шлёт Telegram-уведомление."""
+def save_event(event_type: str, obj: dict, frame):
+    """Скриншот → БД → видеоклип → Telegram. Всё обёрнуто в try/except."""
     class_name = obj['class']
-    track_id = obj['track_id']
+    track_id   = obj['track_id']
     confidence = obj['confidence']
 
     # 1. Скриншот
     screenshot_path = None
     if SETTINGS.get('save_screenshots', True):
-        filename = f"shot_{time.strftime('%Y%m%d_%H%M%S')}_id{track_id}.jpg"
-        full_path = os.path.join('detections', filename)
-        cv2.imwrite(full_path, frame)
-        screenshot_path = f"detections/{filename}"  # относительный путь для веба
+        fname = f"shot_{time.strftime('%Y%m%d_%H%M%S')}_id{track_id}.jpg"
+        path  = os.path.join('data/detections', fname)
+        try:
+            cv2.imwrite(path, frame)
+            screenshot_path = f'data/detections/{fname}'
+        except Exception as e:
+            print(f'[Событие] Не удалось сохранить скриншот: {e}')
 
-    # 2. Запись в БД
+    # 2. Запись в SQLite
     event_id = database.add_event(
         event_type=event_type,
         class_name=class_name,
@@ -72,257 +89,270 @@ def save_event(event_type, obj, frame):
         screenshot=screenshot_path,
     )
 
-    # 3. Видеофрагмент (10 сек до + 10 сек после) — асинхронно
-    if SETTINGS.get('save_video_clips', True) and video_clip_buffer is not None:
-        def _on_clip_ready(path):
-            rel = path.replace('\\', '/')
-            database.update_event_clip(event_id, rel)
+    # 3. Видеоклип (асинхронно — внутри VideoClipBuffer)
+    if SETTINGS.get('save_video_clips', True) and video_clip_buffer:
+        def _on_clip_ready(path: str):
+            database.update_event_clip(event_id, path.replace('\\', '/'))
         video_clip_buffer.start_clip(on_complete=_on_clip_ready)
 
-    # 4. Telegram-уведомление
+    # 4. Telegram
     if SETTINGS.get('telegram_enabled', False):
-        token = SETTINGS.get('telegram_token', '')
+        token   = SETTINGS.get('telegram_token', '')
         chat_id = SETTINGS.get('telegram_chat_id', '')
-        caption = (f"🚨 {event_type}\n"
-                   f"Объект: {class_name} (ID {track_id})\n"
-                   f"Уверенность: {confidence}\n"
-                   f"Время: {time.strftime('%H:%M:%S')}")
+        caption = (f'🚨 {event_type}\n'
+                   f'Объект: {class_name} (ID {track_id})\n'
+                   f'Уверенность: {confidence}\n'
+                   f'Время: {time.strftime("%H:%M:%S")}')
         if screenshot_path and os.path.exists(screenshot_path):
             telegram_notify.send_photo(token, chat_id, screenshot_path, caption)
         else:
             telegram_notify.send_message(token, chat_id, caption)
 
-    print(f"[Событие] {event_type}: {class_name} ID{track_id} conf={confidence}")
+    print(f'[Событие] {event_type} | {class_name} ID:{track_id} conf:{confidence}')
 
 
-def handle_events(frame, detections):
-    """Анализирует детекции и создаёт события при тревогах."""
+def handle_events(frame, detections: list):
+    """Анализирует детекции и при необходимости создаёт тревоги."""
     alert_conf = SETTINGS.get('alert_confidence', 0.7)
     for obj in detections:
-        track_id = obj['track_id']
-        if track_id is None:
+        tid = obj.get('track_id')
+        if tid is None:
             continue
-
-        # Событие 1: появление уверенно распознанного объекта
-        if track_id not in alerted_appearance and obj['confidence'] >= alert_conf:
-            alerted_appearance.add(track_id)
+        # Тревога 1: уверенное появление нового объекта
+        if tid not in _alerted_appear and obj['confidence'] >= alert_conf:
+            _alerted_appear.add(tid)
             save_event('Появление объекта', obj, frame)
-
-        # Событие 2: объект слишком долго в кадре (аномалия)
-        if obj.get('long_stay') and track_id not in alerted_long_stay:
-            alerted_long_stay.add(track_id)
+        # Тревога 2: объект слишком долго в кадре
+        if obj.get('long_stay') and tid not in _alerted_long:
+            _alerted_long.add(tid)
             save_event('Долгое нахождение', obj, frame)
 
 
-# ========== Функция захвата и обработки видео ==========
-def capture_and_detect():
+# ─── поток захвата и обработки видео ────────────────────────────────────────
+
+def capture_loop():
     global frame_buffer, current_detections, current_class_counts
     global detection_fps, running, video_clip_buffer
 
-    cap = cv2.VideoCapture(VIDEO_SOURCE)
+    source = _parse_video_source(SETTINGS.get('video_source', '0'))
+    cap = cv2.VideoCapture(source)
+
     if not cap.isOpened():
-        print(f"Ошибка: не удалось открыть источник видео {VIDEO_SOURCE}")
+        print(f'[ОШИБКА] Не удалось открыть источник видео: {source}')
         return
 
-    # Реальный FPS видео (для контроля скорости воспроизведения файла)
-    video_fps = cap.get(cv2.CAP_PROP_FPS)
-    if video_fps <= 0:
-        video_fps = 25
+    video_fps = cap.get(cv2.CAP_PROP_FPS) or 25
     frame_delay = 1.0 / video_fps
-    print(f"FPS видео: {video_fps}, задержка: {frame_delay:.3f} сек")
+    print(f'[Камера] Источник: {source}  FPS: {video_fps:.1f}')
 
-    # Создаём кольцевой буфер видео под реальный FPS
+    # Кольцевой буфер видео
     video_clip_buffer = VideoClipBuffer(
         fps=int(video_fps),
         pre_seconds=SETTINGS.get('clip_pre_seconds', 10),
         post_seconds=SETTINGS.get('clip_post_seconds', 10),
-        out_dir='detections',
+        out_dir='data/detections',
     )
 
-    frame_count = 0
-    fps_start_time = time.time()
-    last_frame_time = time.time()
+    frame_count   = 0
+    fps_timer     = time.time()
+    last_frame_t  = time.time()
 
     while running:
-        # Контроль скорости воспроизведения (для видеофайла)
-        now = time.time()
-        time_since_last = now - last_frame_time
-        if time_since_last < frame_delay:
-            time.sleep(frame_delay - time_since_last)
+        # Контроль скорости (важно при воспроизведении видеофайла, не RTSP)
+        elapsed = time.time() - last_frame_t
+        if elapsed < frame_delay:
+            time.sleep(frame_delay - elapsed)
 
         ret, frame = cap.read()
         if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # зацикливаем файл
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # зацикливаем видеофайл
             continue
+        last_frame_t = time.time()
 
-        last_frame_time = time.time()
+        processed, dets, counts = detector.process_frame(frame)
+        frame_buffer        = processed
+        current_detections  = dets
+        current_class_counts = counts
 
-        # Обработка кадра детектором
-        processed_frame, detections, class_counts = detector.process_frame(frame)
-
-        frame_buffer = processed_frame
-        current_detections = detections
-        current_class_counts = class_counts
-
-        # Когда детекция включена — кормим видеобуфер и проверяем тревоги
         if detector.enabled:
-            video_clip_buffer.add_frame(processed_frame)
-            handle_events(processed_frame, detections)
+            video_clip_buffer.add_frame(processed)
+            handle_events(processed, dets)
 
-        # Подсчёт FPS обработки
+        # Подсчёт FPS
         frame_count += 1
-        if time.time() - fps_start_time >= 1.0:
+        if time.time() - fps_timer >= 1.0:
             detection_fps = frame_count
-            frame_count = 0
-            fps_start_time = time.time()
+            frame_count   = 0
+            fps_timer     = time.time()
 
     cap.release()
 
 
-# ========== Lifespan менеджер ==========
+# ─── lifespan FastAPI ────────────────────────────────────────────────────────
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global capture_thread, running
-    database.init_db()  # создаём таблицу событий
+    global running
+    database.init_db()
     running = True
-    capture_thread = threading.Thread(target=capture_and_detect, daemon=True)
-    capture_thread.start()
-    print("✅ Фоновый поток захвата видео запущен")
+    t = threading.Thread(target=capture_loop, daemon=True, name='capture')
+    t.start()
+    cloud_sync.start()
+    print('=' * 55)
+    print('  Веб-приложение камеры АЗС (локальный хост)')
+    print('  http://localhost:8000')
+    print('=' * 55)
     yield
     running = False
-    if capture_thread:
-        capture_thread.join(timeout=2)
-    print("✅ Фоновый поток остановлен")
+    cloud_sync.stop()
+    t.join(timeout=3)
+    print('[Сервер] Остановлен')
 
 
-# ========== Создаём приложение ==========
-web_app = FastAPI(title="Камера АЗС с детекцией", lifespan=lifespan)
+# ─── приложение ─────────────────────────────────────────────────────────────
 
-# Отдаём сохранённые скриншоты и видеофрагменты по URL /detections/...
-web_app.mount("/detections", StaticFiles(directory="detections"), name="detections")
-web_app.mount("/static", StaticFiles(directory="static"), name="static")
+app = FastAPI(title='Камера АЗС', lifespan=lifespan)
+app.mount('/detections', StaticFiles(directory='detections'), name='detections')
+app.mount('/static',     StaticFiles(directory='static'),     name='static')
 
 
-# ========== Генератор MJPEG-потока ==========
-def generate_mjpeg_stream():
+# ─── MJPEG стрим ─────────────────────────────────────────────────────────────
+
+def _mjpeg_gen():
     while running:
         if frame_buffer is not None:
-            _, jpeg = cv2.imencode('.jpg', frame_buffer, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' +
-                   jpeg.tobytes() +
-                   b'\r\n')
+            ok, jpeg = cv2.imencode('.jpg', frame_buffer,
+                                    [cv2.IMWRITE_JPEG_QUALITY, 75])
+            if ok:
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'
+                       + jpeg.tobytes() + b'\r\n')
         else:
-            time.sleep(0.01)
+            time.sleep(0.02)
 
 
-# ========== Чтение HTML из файла ==========
-def get_html(name):
-    html_path = os.path.join('templates', name)
+@app.get('/video_feed')
+async def video_feed():
+    return StreamingResponse(
+        _mjpeg_gen(),
+        media_type='multipart/x-mixed-replace; boundary=frame',
+    )
+
+
+# ─── HTML страницы ────────────────────────────────────────────────────────────
+
+def _read_html(name: str) -> str:
+    path = os.path.join('templates', name)
     try:
-        with open(html_path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             return f.read()
     except FileNotFoundError:
-        return f"<h1>Файл templates/{name} не найден</h1>"
+        return f'<h1>Файл templates/{name} не найден</h1>'
 
 
-# ========== HTML-страницы ==========
-@web_app.get("/", response_class=HTMLResponse)
-async def index():
-    return HTMLResponse(content=get_html('index.html'))
+@app.get('/',         response_class=HTMLResponse)
+async def page_index():    return HTMLResponse(_read_html('index.html'))
+
+@app.get('/events',   response_class=HTMLResponse)
+async def page_events():   return HTMLResponse(_read_html('events.html'))
+
+@app.get('/settings', response_class=HTMLResponse)
+async def page_settings(): return HTMLResponse(_read_html('settings.html'))
 
 
-@web_app.get("/events", response_class=HTMLResponse)
-async def events_page():
-    return HTMLResponse(content=get_html('events.html'))
+# ─── API: детекция ───────────────────────────────────────────────────────────
 
-
-@web_app.get("/settings", response_class=HTMLResponse)
-async def settings_page():
-    return HTMLResponse(content=get_html('settings.html'))
-
-
-# ========== Видеопоток ==========
-@web_app.get("/video_feed")
-async def video_feed():
-    return StreamingResponse(generate_mjpeg_stream(),
-                             media_type="multipart/x-mixed-replace; boundary=frame")
-
-
-# ========== API: детекции ==========
-@web_app.get("/api/detections")
-async def get_detections():
+@app.get('/api/detections')
+async def api_detections():
     return {
-        "detection_enabled": detector.enabled,
-        "fps": detection_fps,
-        "objects": current_detections,
-        "class_counts": current_class_counts,
+        'detection_enabled': detector.enabled,
+        'fps':               detection_fps,
+        'objects':           current_detections,
+        'class_counts':      current_class_counts,
     }
 
 
-@web_app.post("/api/detection/start")
-async def start_detection():
-    # При запуске очищаем историю тревог, чтобы события начинались «с чистого листа»
-    alerted_appearance.clear()
-    alerted_long_stay.clear()
+@app.post('/api/detection/start')
+async def api_start():
+    _alerted_appear.clear()
+    _alerted_long.clear()
     detector.set_enabled(True)
-    return {"status": "started"}
+    return {'status': 'started'}
 
 
-@web_app.post("/api/detection/stop")
-async def stop_detection():
+@app.post('/api/detection/stop')
+async def api_stop():
     detector.set_enabled(False)
-    return {"status": "stopped"}
+    return {'status': 'stopped'}
 
 
-# ========== API: события ==========
-@web_app.get("/api/events")
-async def api_events():
-    return {"events": database.get_events(limit=200)}
+# ─── API: события ────────────────────────────────────────────────────────────
+
+@app.get('/api/events')
+async def api_events(
+    page: int = 1,
+    per_page: int = 10,
+    event_type: str = '',
+    date_from: str = '',
+    date_to: str = '',
+):
+    et    = event_type or None
+    df    = date_from  or None
+    dt    = date_to    or None
+    total = database.count_events(et, df, dt)
+    items = database.get_events(
+        limit=per_page,
+        offset=(page - 1) * per_page,
+        event_type=et, date_from=df, date_to=dt,
+    )
+    return {'events': items, 'total': total, 'page': page, 'per_page': per_page}
 
 
-@web_app.post("/api/events/clear")
+@app.post('/api/events/clear')
 async def api_events_clear():
     database.clear_events()
-    return {"status": "cleared"}
+    return {'status': 'cleared'}
 
 
-# ========== API: настройки ==========
-@web_app.get("/api/settings")
+# ─── API: настройки ──────────────────────────────────────────────────────────
+
+@app.get('/api/settings')
 async def api_get_settings():
     return SETTINGS
 
 
-@web_app.post("/api/settings")
+@app.post('/api/settings')
 async def api_save_settings(request: Request):
     global SETTINGS
     data = await request.json()
-    # Сохраняем в файл и обновляем глобальные настройки
     SETTINGS = config.save_settings(data)
-    # Применяем к детектору «на лету»
+    # Применяем к детектору без перезапуска
     detector.update_settings(
         confidence_threshold=SETTINGS['confidence_threshold'],
         frame_skip=SETTINGS['frame_skip'],
-        treat_person_as_car=SETTINGS['treat_person_as_car'],
+        active_classes=SETTINGS['active_classes'],
         long_stay_seconds=SETTINGS['long_stay_seconds'],
     )
-    return {"status": "saved", "settings": SETTINGS}
+    cloud_sync.update(
+        cloud_url=SETTINGS.get('cloud_url', 'http://localhost:8001'),
+        api_key=SETTINGS.get('cloud_api_key', ''),
+        enabled=SETTINGS.get('cloud_sync_enabled', False),
+    )
+    return {'status': 'saved', 'settings': SETTINGS}
 
 
-@web_app.post("/api/telegram/test")
+# ─── API: Telegram тест ──────────────────────────────────────────────────────
+
+@app.post('/api/telegram/test')
 async def api_telegram_test():
     ok, msg = telegram_notify.test_connection(
         SETTINGS.get('telegram_token', ''),
         SETTINGS.get('telegram_chat_id', ''),
     )
-    return JSONResponse({"ok": ok, "message": msg})
+    return JSONResponse({'ok': ok, 'message': msg})
 
 
-if __name__ == "__main__":
+# ─── точка входа ─────────────────────────────────────────────────────────────
+
+if __name__ == '__main__':
     import uvicorn
-
-    print("=" * 50)
-    print("Запуск веб-приложения камеры АЗС")
-    print("Откройте в браузере: http://localhost:8000")
-    print("=" * 50)
-    uvicorn.run(web_app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host='0.0.0.0', port=8000)

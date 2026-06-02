@@ -1,192 +1,388 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>Настройки — Камера АЗС</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            margin: 0; padding: 20px;
-            background-color: #1e1e2f; color: #eee;
-        }
-        .container { max-width: 800px; margin: 0 auto; }
-        .top-bar {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 20px; padding: 10px 20px;
-            background: #2d2d3f; border-radius: 10px;
-        }
-        .nav-buttons { display: flex; gap: 15px; }
-        .nav-btn {
-            display: inline-block; padding: 10px 25px; font-size: 16px; font-weight: bold;
-            border: none; border-radius: 8px; cursor: pointer;
-            background-color: #3a3a55; color: white; text-decoration: none;
-        }
-        .nav-btn:hover { background-color: #4a4a6a; }
-        .title { font-size: 20px; font-weight: bold; color: #ffaa44; }
-        .card {
-            background: #2d2d3f; border-radius: 12px; padding: 20px; margin-bottom: 20px;
-        }
-        .card h3 { margin-top: 0; color: #ffaa44; }
-        .field { margin-bottom: 18px; }
-        .field label { display: block; margin-bottom: 6px; font-weight: bold; }
-        .field .hint { font-size: 12px; color: #aaa; margin-top: 4px; }
-        input[type=number], input[type=text], select {
-            width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #4a4a6a;
-            background: #1e1e2f; color: #eee; font-size: 15px;
-        }
-        input[type=checkbox] { transform: scale(1.4); margin-right: 10px; }
-        .row-value { color: #ffaa44; font-weight: bold; }
-        .btn {
-            padding: 12px 30px; font-size: 16px; font-weight: bold; border: none;
-            border-radius: 8px; cursor: pointer; color: white;
-        }
-        .btn-save { background: #28a745; }
-        .btn-save:hover { background: #218838; }
-        .btn-test { background: #2196f3; }
-        .btn-test:hover { background: #1976d2; }
-        #status { margin-left: 15px; font-weight: bold; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>АЗС · Настройки</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080b12;--surf:#0e1420;--card:#131a28;--bord:#1c2840;
+  --acc:#00c8ff;--grn:#00e676;--red:#ff3d71;--ylw:#ffcc00;
+  --txt:#b8ccec;--mut:#3a4f70;
+  --font:'Rajdhani',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;height:52px;background:var(--surf);border-bottom:1px solid var(--bord);
+  position:sticky;top:0;z-index:100;
+}
+.logo{font-size:18px;font-weight:700;letter-spacing:3px;color:var(--acc)}
+.logo em{color:var(--txt);font-style:normal}
+.nav{display:flex;gap:4px}
+.nav a{
+  padding:6px 16px;border-radius:4px;font-size:14px;font-weight:600;letter-spacing:1px;
+  color:var(--mut);text-decoration:none;border:1px solid transparent;transition:.2s
+}
+.nav a:hover,.nav a.cur{color:var(--acc);border-color:var(--acc);background:rgba(0,200,255,.06)}
+.wrap{max-width:820px;margin:0 auto;padding:18px 20px}
+.section{
+  background:var(--card);border:1px solid var(--bord);border-radius:6px;
+  margin-bottom:14px;overflow:hidden
+}
+.sh{
+  padding:11px 16px;font-size:11px;font-weight:700;letter-spacing:2px;
+  text-transform:uppercase;color:var(--acc);border-bottom:1px solid var(--bord)
+}
+.sbody{padding:16px}
+.field{margin-bottom:16px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:15px;font-weight:600;margin-bottom:6px;color:var(--txt)}
+.hint{font-size:12px;color:var(--mut);margin-top:5px;line-height:1.4}
+input[type=text],input[type=number],select{
+  width:100%;padding:9px 12px;border-radius:4px;
+  border:1px solid var(--bord);background:var(--surf);
+  color:var(--txt);font-family:var(--mono);font-size:14px;
+  transition:.2s
+}
+input[type=text]:focus,input[type=number]:focus{
+  outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(0,200,255,.1)
+}
+/* range */
+.range-wrap{display:flex;align-items:center;gap:12px}
+input[type=range]{
+  flex:1;height:4px;-webkit-appearance:none;appearance:none;
+  background:var(--bord);border-radius:2px;cursor:pointer
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--acc);box-shadow:0 0 8px rgba(0,200,255,.5)
+}
+.rval{
+  font-family:var(--mono);font-size:16px;font-weight:700;
+  color:var(--acc);min-width:36px;text-align:center
+}
+/* чекбоксы классов */
+.checks{display:flex;flex-wrap:wrap;gap:10px}
+.chk-label{
+  display:flex;align-items:center;gap:8px;cursor:pointer;
+  background:var(--surf);border:1px solid var(--bord);border-radius:4px;
+  padding:8px 14px;font-size:14px;font-weight:600;transition:.2s;
+  user-select:none
+}
+.chk-label:hover{border-color:var(--acc)}
+.chk-label input[type=checkbox]{display:none}
+.chk-label.checked{border-color:var(--acc);background:rgba(0,200,255,.08);color:var(--acc)}
+.chk-dot{width:8px;height:8px;border-radius:50%;background:var(--mut);transition:.2s}
+.chk-label.checked .chk-dot{background:var(--acc);box-shadow:0 0 6px var(--acc)}
+/* toggle */
+.toggle-row{display:flex;align-items:center;justify-content:space-between}
+.toggle{position:relative;width:46px;height:24px;cursor:pointer;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.tslider{
+  position:absolute;inset:0;background:var(--bord);border-radius:24px;transition:.25s
+}
+.tslider::before{
+  content:'';position:absolute;width:18px;height:18px;border-radius:50%;
+  background:#fff;top:3px;left:3px;transition:.25s
+}
+.toggle input:checked+.tslider{background:var(--acc)}
+.toggle input:checked+.tslider::before{transform:translateX(22px)}
+/* кнопки */
+.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.btn{
+  padding:11px 28px;border:none;border-radius:5px;
+  font-family:var(--font);font-size:15px;font-weight:700;
+  letter-spacing:1px;cursor:pointer;transition:.2s
+}
+.btn-save{background:linear-gradient(135deg,#00b04a,#00e676);color:#000}
+.btn-save:hover{box-shadow:0 0 20px rgba(0,230,118,.4);transform:translateY(-1px)}
+.btn-test{background:linear-gradient(135deg,#0088cc,#00c8ff);color:#000}
+.btn-test:hover{box-shadow:0 0 20px rgba(0,200,255,.4);transform:translateY(-1px)}
+.msg{
+  font-family:var(--mono);font-size:13px;padding:7px 14px;
+  border-radius:4px;display:none
+}
+.msg.ok{background:rgba(0,230,118,.12);border:1px solid var(--grn);color:var(--grn)}
+.msg.err{background:rgba(255,61,113,.12);border:1px solid var(--red);color:var(--red)}
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="top-bar">
-            <div class="nav-buttons">
-                <a class="nav-btn" href="/">📹 Камера</a>
-                <a class="nav-btn" href="/events">📋 События</a>
-            </div>
-            <div class="title">⚙️ Настройки</div>
-        </div>
 
-        <!-- Параметры детекции -->
-        <div class="card">
-            <h3>Детекция</h3>
-            <div class="field">
-                <label>Порог уверенности: <span class="row-value" id="conf-val">0.5</span></label>
-                <input type="range" id="confidence_threshold" min="0.1" max="0.9" step="0.05"
-                       style="width:100%" oninput="document.getElementById('conf-val').textContent=this.value">
-                <div class="hint">Чем выше — тем меньше ложных срабатываний.</div>
-            </div>
-            <div class="field">
-                <label>Пропуск кадров (frame_skip)</label>
-                <input type="number" id="frame_skip" min="1" max="10" step="1">
-                <div class="hint">Запускать YOLO раз в N кадров. Больше = выше FPS, но реже обновление.</div>
-            </div>
-            <div class="field">
-                <label>
-                    <input type="checkbox" id="treat_person_as_car">
-                    Считать «человека» автомобилем
-                </label>
-                <div class="hint">Камера АЗС под наклоном, машины часто детектируются как person. Включите для корректного подсчёта машин.</div>
-            </div>
-            <div class="field">
-                <label>Порог «долгого нахождения» (сек)</label>
-                <input type="number" id="long_stay_seconds" min="5" max="600" step="5">
-                <div class="hint">Если объект в кадре дольше — создаётся событие-аномалия.</div>
-            </div>
-        </div>
+<div class="topbar">
+  <div class="logo">АЗС<em> · CAM-01</em></div>
+  <nav class="nav">
+    <a href="/">МОНИТОР</a>
+    <a href="/events">СОБЫТИЯ</a>
+    <a href="/settings" class="cur">НАСТРОЙКИ</a>
+  </nav>
+</div>
 
-        <!-- Тревоги -->
-        <div class="card">
-            <h3>Тревоги и сохранение</h3>
-            <div class="field">
-                <label>Порог уверенности для тревоги</label>
-                <input type="number" id="alert_confidence" min="0.1" max="0.99" step="0.05">
-                <div class="hint">Скриншот/событие создаётся, если уверенность не ниже этого значения.</div>
-            </div>
-            <div class="field">
-                <label><input type="checkbox" id="save_screenshots"> Сохранять скриншоты</label>
-            </div>
-            <div class="field">
-                <label><input type="checkbox" id="save_video_clips"> Сохранять видеофрагменты</label>
-                <div class="hint">Изменения секунд клипа применяются после перезапуска сервера.</div>
-            </div>
-            <div class="field">
-                <label>Секунд ДО события</label>
-                <input type="number" id="clip_pre_seconds" min="2" max="30" step="1">
-            </div>
-            <div class="field">
-                <label>Секунд ПОСЛЕ события</label>
-                <input type="number" id="clip_post_seconds" min="2" max="30" step="1">
-            </div>
-        </div>
+<div class="wrap">
 
-        <!-- Telegram -->
-        <div class="card">
-            <h3>Telegram-уведомления</h3>
-            <div class="field">
-                <label><input type="checkbox" id="telegram_enabled"> Включить уведомления</label>
-            </div>
-            <div class="field">
-                <label>Токен бота</label>
-                <input type="text" id="telegram_token" placeholder="123456:ABC-DEF...">
-            </div>
-            <div class="field">
-                <label>Chat ID</label>
-                <input type="text" id="telegram_chat_id" placeholder="123456789">
-            </div>
-            <button class="btn btn-test" onclick="testTelegram()">📨 Проверить связь</button>
+  <!-- Источник видео -->
+  <div class="section">
+    <div class="sh">Источник видео</div>
+    <div class="sbody">
+      <div class="field">
+        <label>Адрес камеры</label>
+        <input type="text" id="video_source"
+          placeholder="0 — USB-камера, rtsp://... — IP-камера, или путь к файлу">
+        <div class="hint">
+          Примеры: <code>0</code> (первая USB), <code>rtsp://admin:pass@192.168.1.64/stream</code>,
+          <code>test_video.mp4</code>. Перезапустите сервер после изменения.
         </div>
-
-        <button class="btn btn-save" onclick="saveSettings()">💾 Сохранить настройки</button>
-        <span id="status"></span>
+      </div>
     </div>
+  </div>
 
-    <script>
-    // Список всех полей настроек
-    const NUM_FIELDS = ['confidence_threshold','frame_skip','long_stay_seconds',
-                        'alert_confidence','clip_pre_seconds','clip_post_seconds'];
-    const BOOL_FIELDS = ['treat_person_as_car','save_screenshots','save_video_clips','telegram_enabled'];
-    const TEXT_FIELDS = ['telegram_token','telegram_chat_id'];
+  <!-- Детекция -->
+  <div class="section">
+    <div class="sh">Детекция</div>
+    <div class="sbody">
 
-    async function loadSettings() {
-        const resp = await fetch('/api/settings');
-        const s = await resp.json();
-        for (const f of NUM_FIELDS) {
-            if (s[f] != null) document.getElementById(f).value = s[f];
-        }
-        for (const f of BOOL_FIELDS) {
-            document.getElementById(f).checked = !!s[f];
-        }
-        for (const f of TEXT_FIELDS) {
-            document.getElementById(f).value = s[f] || '';
-        }
-        document.getElementById('conf-val').textContent = s.confidence_threshold;
-    }
+      <div class="field">
+        <label>Порог уверенности</label>
+        <div class="range-wrap">
+          <input type="range" id="confidence_threshold" min="0.1" max="0.9" step="0.05"
+            oninput="document.getElementById('cv').textContent=parseFloat(this.value).toFixed(2)">
+          <span class="rval" id="cv">0.50</span>
+        </div>
+        <div class="hint">Чем выше — тем меньше ложных срабатываний.</div>
+      </div>
 
-    async function saveSettings() {
-        const data = {};
-        for (const f of NUM_FIELDS) data[f] = parseFloat(document.getElementById(f).value);
-        for (const f of BOOL_FIELDS) data[f] = document.getElementById(f).checked;
-        for (const f of TEXT_FIELDS) data[f] = document.getElementById(f).value;
+      <div class="field">
+        <label>Пропуск кадров (frame_skip)</label>
+        <input type="number" id="frame_skip" min="1" max="10" step="1" style="max-width:120px">
+        <div class="hint">YOLO запускается раз в N кадров. <b>1</b> = каждый кадр (медленно), <b>3–5</b> = оптимально на CPU.</div>
+      </div>
 
-        const status = document.getElementById('status');
-        status.textContent = 'Сохранение...';
-        status.style.color = '#aaa';
-        const resp = await fetch('/api/settings', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
-        if (resp.ok) {
-            status.textContent = '✅ Сохранено';
-            status.style.color = '#28a745';
-        } else {
-            status.textContent = '❌ Ошибка';
-            status.style.color = '#dc3545';
-        }
-        setTimeout(() => status.textContent = '', 3000);
-    }
+      <div class="field">
+        <label>Детектируемые классы</label>
+        <div class="checks" id="class_checks">
+          <label class="chk-label" data-cls="car">
+            <input type="checkbox" value="car">
+            <div class="chk-dot"></div>
+            Автомобиль
+          </label>
+          <label class="chk-label" data-cls="bus">
+            <input type="checkbox" value="bus">
+            <div class="chk-dot"></div>
+            Автобус
+          </label>
+          <label class="chk-label" data-cls="truck">
+            <input type="checkbox" value="truck">
+            <div class="chk-dot"></div>
+            Грузовик
+          </label>
+          <label class="chk-label" data-cls="person">
+            <input type="checkbox" value="person">
+            <div class="chk-dot"></div>
+            Человек
+          </label>
+          <label class="chk-label" data-cls="motorcycle">
+            <input type="checkbox" value="motorcycle">
+            <div class="chk-dot"></div>
+            Мотоцикл
+          </label>
+          <label class="chk-label" data-cls="bicycle">
+            <input type="checkbox" value="bicycle">
+            <div class="chk-dot"></div>
+            Велосипед
+          </label>
+        </div>
+      </div>
 
-    async function testTelegram() {
-        // Сначала сохраняем, чтобы сервер использовал актуальный token/chat_id
-        await saveSettings();
-        const resp = await fetch('/api/telegram/test', { method: 'POST' });
-        const data = await resp.json();
-        alert(data.message);
-    }
+      <div class="field">
+        <label>Порог «долгого нахождения», секунд</label>
+        <input type="number" id="long_stay_seconds" min="5" max="600" step="5" style="max-width:120px">
+        <div class="hint">Объект в кадре дольше этого времени → событие-аномалия.</div>
+      </div>
 
-    loadSettings();
-    </script>
+    </div>
+  </div>
+
+  <!-- Тревоги -->
+  <div class="section">
+    <div class="sh">Тревоги и сохранение</div>
+    <div class="sbody">
+      <div class="field">
+        <label>Порог уверенности для тревоги</label>
+        <input type="number" id="alert_confidence" min="0.1" max="0.99" step="0.05" style="max-width:120px">
+        <div class="hint">Событие создаётся только если уверенность ≥ этого значения.</div>
+      </div>
+      <div class="field">
+        <div class="toggle-row">
+          <label>Сохранять скриншоты</label>
+          <label class="toggle"><input type="checkbox" id="save_screenshots"><div class="tslider"></div></label>
+        </div>
+      </div>
+      <div class="field">
+        <div class="toggle-row">
+          <label>Сохранять видеофрагменты</label>
+          <label class="toggle"><input type="checkbox" id="save_video_clips"><div class="tslider"></div></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Секунд ДО / ПОСЛЕ события</label>
+        <div style="display:flex;gap:12px">
+          <div>
+            <div class="hint" style="margin-bottom:4px">До</div>
+            <input type="number" id="clip_pre_seconds"  min="2" max="60" step="1" style="max-width:100px">
+          </div>
+          <div>
+            <div class="hint" style="margin-bottom:4px">После</div>
+            <input type="number" id="clip_post_seconds" min="2" max="60" step="1" style="max-width:100px">
+          </div>
+        </div>
+        <div class="hint">Изменения применятся после перезапуска сервера.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Telegram -->
+  <div class="section">
+    <div class="sh">Telegram-уведомления</div>
+    <div class="sbody">
+      <div class="field">
+        <div class="toggle-row">
+          <label>Включить уведомления</label>
+          <label class="toggle"><input type="checkbox" id="telegram_enabled"><div class="tslider"></div></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Токен бота</label>
+        <input type="text" id="telegram_token" placeholder="123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11">
+      </div>
+      <div class="field">
+        <label>Chat ID</label>
+        <input type="text" id="telegram_chat_id" placeholder="-100123456789">
+        <div class="hint">Получить: написать боту, открыть https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Облако -->
+  <div class="section">
+    <div class="sh">Синхронизация с облаком</div>
+    <div class="sbody">
+      <div class="field">
+        <div class="toggle-row">
+          <label>Включить синхронизацию</label>
+          <label class="toggle"><input type="checkbox" id="cloud_sync_enabled"><div class="tslider"></div></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>URL облачного сервера</label>
+        <input type="text" id="cloud_url" placeholder="http://localhost:8001">
+      </div>
+      <div class="field">
+        <label>API-ключ</label>
+        <input type="text" id="cloud_api_key" placeholder="secret-key-123">
+      </div>
+    </div>
+  </div>
+
+  <!-- Действия -->
+  <div class="actions">
+    <button class="btn btn-save" onclick="saveSettings()">Сохранить настройки</button>
+    <button class="btn btn-test" onclick="testTelegram()">Тест Telegram</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+</div>
+
+<script>
+// ─── чекбоксы классов ─────────────────────────────────────────────────────
+document.querySelectorAll('.chk-label').forEach(lbl=>{
+  const cb=lbl.querySelector('input[type=checkbox]');
+  const updateStyle=()=>lbl.classList.toggle('checked',cb.checked);
+  cb.addEventListener('change',updateStyle);
+  updateStyle();
+});
+
+// ─── загрузка текущих настроек ────────────────────────────────────────────
+async function loadSettings(){
+  const s=await(await fetch('/api/settings')).json();
+
+  // простые поля
+  const simple=['video_source','frame_skip','long_stay_seconds','alert_confidence',
+                'clip_pre_seconds','clip_post_seconds','telegram_token','telegram_chat_id',
+                'cloud_url','cloud_api_key'];
+  simple.forEach(f=>{
+    const el=document.getElementById(f);
+    if(el&&s[f]!=null) el.value=s[f];
+  });
+
+  // range
+  const ct=document.getElementById('confidence_threshold');
+  ct.value=s.confidence_threshold??0.5;
+  document.getElementById('cv').textContent=parseFloat(ct.value).toFixed(2);
+
+  // чекбоксы-тогглы
+  ['save_screenshots','save_video_clips','telegram_enabled','cloud_sync_enabled'].forEach(f=>{
+    const el=document.getElementById(f); if(el) el.checked=!!s[f];
+  });
+
+  // классы
+  const active=new Set(s.active_classes||[]);
+  document.querySelectorAll('.chk-label').forEach(lbl=>{
+    const cb=lbl.querySelector('input');
+    cb.checked=active.has(cb.value);
+    lbl.classList.toggle('checked',cb.checked);
+  });
+}
+
+// ─── сохранение ──────────────────────────────────────────────────────────
+async function saveSettings(){
+  const active=[];
+  document.querySelectorAll('.chk-label input:checked').forEach(cb=>active.push(cb.value));
+
+  const data={
+    video_source:        document.getElementById('video_source').value,
+    confidence_threshold:parseFloat(document.getElementById('confidence_threshold').value),
+    frame_skip:          parseInt(document.getElementById('frame_skip').value),
+    active_classes:      active,
+    long_stay_seconds:   parseInt(document.getElementById('long_stay_seconds').value),
+    alert_confidence:    parseFloat(document.getElementById('alert_confidence').value),
+    save_screenshots:    document.getElementById('save_screenshots').checked,
+    save_video_clips:    document.getElementById('save_video_clips').checked,
+    clip_pre_seconds:    parseInt(document.getElementById('clip_pre_seconds').value),
+    clip_post_seconds:   parseInt(document.getElementById('clip_post_seconds').value),
+    telegram_enabled:    document.getElementById('telegram_enabled').checked,
+    telegram_token:      document.getElementById('telegram_token').value,
+    telegram_chat_id:    document.getElementById('telegram_chat_id').value,
+    cloud_sync_enabled:  document.getElementById('cloud_sync_enabled').checked,
+    cloud_url:           document.getElementById('cloud_url').value,
+    cloud_api_key:       document.getElementById('cloud_api_key').value,
+  };
+
+  showMsg('Сохранение...','');
+  const r=await fetch('/api/settings',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(data)
+  });
+  r.ok?showMsg('Сохранено','ok'):showMsg('Ошибка','err');
+}
+
+async function testTelegram(){
+  await saveSettings();
+  const r=await fetch('/api/telegram/test',{method:'POST'});
+  const d=await r.json();
+  alert(d.message);
+}
+
+function showMsg(text,cls){
+  const el=document.getElementById('msg');
+  el.textContent=text; el.className='msg'+(cls?' '+cls:'');
+  el.style.display='block';
+  if(cls) setTimeout(()=>el.style.display='none',3000);
+}
+
+loadSettings();
+</script>
 </body>
 </html>

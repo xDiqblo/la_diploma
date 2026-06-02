@@ -1,54 +1,60 @@
 """
 config.py — загрузка и сохранение настроек приложения в JSON-файл.
-Настройки можно менять через веб-страницу «Настройки» без перезапуска сервера.
+Все настройки меняются через веб-интерфейс без перезапуска сервера.
 """
 import json
 import os
 import threading
 
-# Путь к файлу настроек
-SETTINGS_FILE = 'settings.json'
+SETTINGS_FILE = 'data/settings.json'
 
-# Настройки по умолчанию (используются при первом запуске)
 DEFAULT_SETTINGS = {
-    "confidence_threshold": 0.5,   # порог уверенности YOLO (0.1–0.9)
-    "frame_skip": 3,               # запускать YOLO раз в N кадров (больше = выше FPS)
-    "treat_person_as_car": True,   # считать класс person (id=0) автомобилем (ракурс АЗС)
-    "long_stay_seconds": 30,       # порог «долгого нахождения» объекта (секунд)
-    "alert_confidence": 0.7,       # порог уверенности для сохранения тревоги/скриншота
-    "save_screenshots": True,      # сохранять скриншоты при тревоге
-    "save_video_clips": True,      # сохранять видеофрагменты при тревоге
-    "clip_pre_seconds": 10,        # сколько секунд видео ДО тревоги сохранять
-    "clip_post_seconds": 10,       # сколько секунд видео ПОСЛЕ тревоги сохранять
-    "telegram_enabled": False,     # включить Telegram-уведомления
-    "telegram_token": "",          # токен бота от @BotFather
-    "telegram_chat_id": "",        # ID чата для отправки уведомлений
+    # ── детекция ──────────────────────────────────────────────────────────────
+    "confidence_threshold": 0.5,     # порог уверенности YOLO (0.1–0.9)
+    "frame_skip": 3,                  # YOLO раз в N кадров (выше = быстрее)
+    # Активные классы. Вот здесь — правильное решение проблемы «машины как люди»:
+    # просто снимаем галочку с person. Когда студент дообучит модель — включит обратно.
+    "active_classes": ["car", "bus", "truck"],
+    "long_stay_seconds": 30,          # порог аномалии «долгое нахождение»
+    # ── источник видео ────────────────────────────────────────────────────────
+    "video_source": "0",              # "0" — USB-камера, или RTSP/путь к файлу
+    # ── тревоги и сохранение ─────────────────────────────────────────────────
+    "alert_confidence": 0.7,
+    "save_screenshots": True,
+    "save_video_clips": True,
+    "clip_pre_seconds": 10,
+    "clip_post_seconds": 10,
+    # ── Telegram ──────────────────────────────────────────────────────────────
+    "telegram_enabled": False,
+    "telegram_token": "",
+    "telegram_chat_id": "",
+    # ── облачная синхронизация ────────────────────────────────────────────────
+    "cloud_sync_enabled": False,
+    "cloud_url": "http://localhost:8001",
+    "cloud_api_key": "secret-key-123",
 }
 
-# Блокировка на случай одновременного чтения/записи из разных потоков
 _lock = threading.Lock()
 
 
-def load_settings():
-    """Читает настройки из файла. Если файла нет — создаёт со значениями по умолчанию."""
+def load_settings() -> dict:
+    """Читает настройки из файла. При отсутствии файла создаёт с дефолтами."""
     with _lock:
         if not os.path.exists(SETTINGS_FILE):
-            _save_unlocked(DEFAULT_SETTINGS)
+            _write(DEFAULT_SETTINGS)
             return dict(DEFAULT_SETTINGS)
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            # Добавляем недостающие ключи (на случай обновления версии)
-            settings = dict(DEFAULT_SETTINGS)
-            settings.update(data)
-            return settings
+            merged = dict(DEFAULT_SETTINGS)
+            merged.update(data)
+            return merged
         except (json.JSONDecodeError, OSError):
-            # Файл повреждён — возвращаем значения по умолчанию
             return dict(DEFAULT_SETTINGS)
 
 
-def save_settings(new_settings):
-    """Сохраняет настройки в файл. Принимает словарь (можно частичный)."""
+def save_settings(new_settings: dict) -> dict:
+    """Сохраняет обновлённые настройки (принимает частичный словарь)."""
     with _lock:
         current = dict(DEFAULT_SETTINGS)
         if os.path.exists(SETTINGS_FILE):
@@ -58,11 +64,10 @@ def save_settings(new_settings):
             except (json.JSONDecodeError, OSError):
                 pass
         current.update(new_settings)
-        _save_unlocked(current)
+        _write(current)
         return current
 
 
-def _save_unlocked(settings):
-    """Запись в файл без блокировки (вызывается внутри методов, где блокировка уже взята)."""
+def _write(settings: dict):
     with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
         json.dump(settings, f, ensure_ascii=False, indent=2)

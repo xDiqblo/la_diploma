@@ -1,326 +1,277 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>Камера АЗС - детекция объектов</title>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #1e1e2f;
-            color: #eee;
-        }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        /* Верхняя панель с кнопками */
-        .top-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding: 10px 20px;
-            background: #2d2d3f;
-            border-radius: 10px;
-        }
-        .nav-buttons {
-            display: flex;
-            gap: 15px;
-        }
-        .nav-btn {
-            display: inline-block;
-            padding: 10px 25px;
-            font-size: 16px;
-            font-weight: bold;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            background-color: #3a3a55;
-            color: white;
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-        .nav-btn:hover {
-            background-color: #4a4a6a;
-            transform: scale(1.02);
-        }
-        .title {
-            font-size: 20px;
-            font-weight: bold;
-            color: #ffaa44;
-        }
-        /* Видеоконтейнер */
-        .video-container {
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .video-container img {
-            width: 100%;
-            max-height: 70vh;
-            object-fit: contain;
-        }
-        /* Панель управления детекцией */
-        .control-bar {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        .ctrl-btn {
-            padding: 12px 30px;
-            font-size: 16px;
-            font-weight: bold;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .btn-start {
-            background-color: #28a745;
-            color: white;
-        }
-        .btn-start:hover {
-            background-color: #218838;
-            transform: scale(1.02);
-        }
-        .btn-stop {
-            background-color: #dc3545;
-            color: white;
-        }
-        .btn-stop:hover {
-            background-color: #c82333;
-            transform: scale(1.02);
-        }
-        /* Панель метрик */
-        .metrics {
-            background: #2d2d3f;
-            border-radius: 12px;
-            padding: 15px 20px;
-            margin-bottom: 20px;
-        }
-        .metrics-grid {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-around;
-            gap: 15px;
-        }
-        .metric-card {
-            background: #1e1e2f;
-            border-radius: 10px;
-            padding: 10px 20px;
-            text-align: center;
-            min-width: 100px;
-        }
-        .metric-value {
-            font-size: 28px;
-            font-weight: bold;
-            color: #ffaa44;
-        }
-        .metric-label {
-            font-size: 12px;
-            color: #aaa;
-            margin-top: 5px;
-        }
-        .detection-status {
-            text-align: center;
-            padding: 10px;
-            background: #2d2d3f;
-            border-radius: 10px;
-            font-size: 14px;
-        }
-        .status-active {
-            color: #28a745;
-        }
-        .status-inactive {
-            color: #dc3545;
-        }
-        /* Список объектов (детекций) */
-        .detections-panel {
-            background: #2d2d3f;
-            border-radius: 12px;
-            padding: 15px;
-            margin-top: 20px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        .detections-panel h3 {
-            margin: 0 0 10px 0;
-            color: #ffaa44;
-        }
-        .detection-item {
-            padding: 8px;
-            border-bottom: 1px solid #4a4a6a;
-            font-family: monospace;
-            font-size: 13px;
-        }
-        .detection-person { color: #4caf50; }
-        .detection-car { color: #2196f3; }
-        .detection-bus { color: #ff9800; }
-        .detection-truck { color: #ff5722; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>АЗС · Видеонаблюдение</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080b12;--surf:#0e1420;--card:#131a28;--bord:#1c2840;
+  --acc:#00c8ff;--acc2:#ff6020;--grn:#00e676;--red:#ff3d71;--ylw:#ffcc00;
+  --txt:#b8ccec;--mut:#3a4f70;
+  --font:'Rajdhani',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh;overflow-x:hidden}
+
+/* ── топ-бар ──────────────────────────────────────────── */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;height:52px;
+  background:var(--surf);border-bottom:1px solid var(--bord);
+  position:sticky;top:0;z-index:100;
+}
+.logo{font-size:18px;font-weight:700;letter-spacing:3px;color:var(--acc)}
+.logo em{color:var(--txt);font-style:normal}
+.nav{display:flex;gap:4px}
+.nav a{
+  padding:6px 16px;border-radius:4px;font-size:14px;font-weight:600;
+  letter-spacing:1px;color:var(--mut);text-decoration:none;
+  border:1px solid transparent;transition:.2s
+}
+.nav a:hover,.nav a.cur{color:var(--acc);border-color:var(--acc);background:rgba(0,200,255,.06)}
+.topright{display:flex;align-items:center;gap:16px}
+.clock{font-family:var(--mono);font-size:13px;color:var(--mut)}
+.rec-dot{width:8px;height:8px;border-radius:50%;background:var(--red);
+  box-shadow:0 0 8px var(--red);animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── layout ───────────────────────────────────────────── */
+.layout{
+  display:grid;grid-template-columns:1fr 280px;
+  gap:14px;padding:14px 20px;
+  max-width:1700px;margin:0 auto;
+}
+@media(max-width:960px){.layout{grid-template-columns:1fr}}
+
+/* ── видео ────────────────────────────────────────────── */
+.video-wrap{
+  background:#000;border-radius:6px;overflow:hidden;
+  border:1px solid var(--bord);position:relative;
+  aspect-ratio:16/9;
+}
+.video-wrap img{width:100%;height:100%;object-fit:contain;display:block}
+.vid-badges{position:absolute;top:10px;left:10px;display:flex;gap:8px}
+.badge{
+  padding:3px 10px;border-radius:3px;font-size:11px;font-weight:700;
+  letter-spacing:1px;font-family:var(--mono)
+}
+.b-live{background:var(--red);color:#fff}
+.b-fps{background:rgba(0,0,0,.7);color:var(--acc);border:1px solid var(--acc)}
+/* сканлиния */
+.video-wrap::after{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(
+    to bottom,transparent 0,transparent 3px,rgba(0,0,0,.07) 3px,rgba(0,0,0,.07) 4px)
+}
+
+/* ── кнопки управления ────────────────────────────────── */
+.ctrl{display:flex;gap:10px;margin-top:12px}
+.btn{
+  flex:1;padding:11px 0;border:none;border-radius:5px;
+  font-family:var(--font);font-size:15px;font-weight:700;
+  letter-spacing:1px;cursor:pointer;transition:.2s;
+  display:flex;align-items:center;justify-content:center;gap:8px
+}
+.btn-go{
+  background:linear-gradient(135deg,#00b04a,#00e676);color:#000;
+  box-shadow:0 0 18px rgba(0,230,118,.25)
+}
+.btn-go:hover{box-shadow:0 0 28px rgba(0,230,118,.45);transform:translateY(-1px)}
+.btn-stop{
+  background:linear-gradient(135deg,#b02020,#ff3d71);color:#fff;
+  box-shadow:0 0 18px rgba(255,61,113,.25)
+}
+.btn-stop:hover{box-shadow:0 0 28px rgba(255,61,113,.45);transform:translateY(-1px)}
+.btn:disabled{opacity:.4;cursor:default;transform:none !important;box-shadow:none !important}
+
+/* ── метрики ──────────────────────────────────────────── */
+.metrics{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:10px;margin-top:12px
+}
+.mcard{
+  background:var(--card);border:1px solid var(--bord);border-radius:6px;
+  padding:14px 8px;text-align:center;transition:.25s
+}
+.mcard:hover{border-color:var(--acc)}
+.mval{
+  font-size:30px;font-weight:700;font-family:var(--mono);
+  color:var(--acc);line-height:1
+}
+.mlbl{
+  font-size:10px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--mut);margin-top:6px
+}
+
+/* ── правая панель ────────────────────────────────────── */
+.sidebar{display:flex;flex-direction:column;gap:12px}
+.panel{background:var(--card);border:1px solid var(--bord);border-radius:6px;overflow:hidden}
+.ph{
+  padding:9px 14px;font-size:11px;font-weight:700;letter-spacing:2px;
+  text-transform:uppercase;color:var(--acc);border-bottom:1px solid var(--bord);
+  display:flex;justify-content:space-between;align-items:center
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red)}
+.dot.on{background:var(--grn);box-shadow:0 0 6px var(--grn)}
+
+/* статус строки */
+.srow{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.03);font-size:14px
+}
+.srow:last-child{border-bottom:none}
+.sk{color:var(--mut)}
+.sv{font-family:var(--mono);font-weight:600;color:var(--txt)}
+.sv.on{color:var(--grn)}.sv.off{color:var(--red)}
+
+/* список объектов */
+.objlist{padding:6px;max-height:230px;overflow-y:auto}
+.objlist::-webkit-scrollbar{width:3px}
+.objlist::-webkit-scrollbar-thumb{background:var(--bord)}
+.objitem{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 8px;border-radius:3px;font-family:var(--mono);font-size:12px;
+  border-bottom:1px solid rgba(255,255,255,.03)
+}
+.objitem:last-child{border-bottom:none}
+.odot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.oname{color:#fff;font-weight:700;min-width:52px}
+.ometa{color:var(--mut);flex:1}
+.otime{color:var(--acc2)}
+.olong{color:var(--red) !important}
+.empty{text-align:center;color:var(--mut);padding:24px;font-size:13px}
+</style>
 </head>
 <body>
-    <div class="container">
-        <!-- Верхняя панель -->
-        <div class="top-bar">
-            <div class="nav-buttons">
-                <a class="nav-btn" href="/settings">⚙️ Настройки</a>
-                <a class="nav-btn" href="/events">📋 События</a>
-            </div>
-            <div class="title">📹 Камера АЗС</div>
-        </div>
 
-        <!-- Видеопоток -->
-        <div class="video-container">
-            <img id="video-feed" src="/video_feed" alt="Видеопоток">
-        </div>
+<div class="topbar">
+  <div class="logo">АЗС<em> · CAM-01</em></div>
+  <nav class="nav">
+    <a href="/" class="cur">МОНИТОР</a>
+    <a href="/events">СОБЫТИЯ</a>
+    <a href="/settings">НАСТРОЙКИ</a>
+  </nav>
+  <div class="topright">
+    <div class="rec-dot"></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</div>
 
-        <!-- Управление детекцией -->
-        <div class="control-bar">
-            <button id="btn-start-detection" class="ctrl-btn btn-start">▶ ЗАПУСТИТЬ ДЕТЕКЦИЮ</button>
-            <button id="btn-stop-detection" class="ctrl-btn btn-stop">⏹ ОСТАНОВИТЬ ДЕТЕКЦИЮ</button>
-        </div>
+<div class="layout">
 
-        <!-- Метрики -->
-        <div class="metrics">
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-value" id="fps-value">0</div>
-                    <div class="metric-label">FPS</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="person-count">0</div>
-                    <div class="metric-label">Человек</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="car-count">0</div>
-                    <div class="metric-label">Автомобили</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="bus-count">0</div>
-                    <div class="metric-label">Автобусы</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="truck-count">0</div>
-                    <div class="metric-label">Грузовики</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Статус детекции -->
-        <div class="detection-status" id="detection-status-area">
-            Детекция: <span id="detection-status" class="status-inactive">ОСТАНОВЛЕНА</span>
-        </div>
-
-        <!-- Список текущих детекций -->
-        <div class="detections-panel">
-            <h3>📊 Текущие объекты в кадре</h3>
-            <div id="detections-list">
-                <div style="color: #aaa;">Нет обнаруженных объектов</div>
-            </div>
-        </div>
+  <!-- Видео + управление + метрики -->
+  <div>
+    <div class="video-wrap">
+      <img id="feed" src="/video_feed" alt="Поток">
+      <div class="vid-badges">
+        <span class="badge b-live">LIVE</span>
+        <span class="badge b-fps" id="fpsbadge">0 FPS</span>
+      </div>
     </div>
 
-    <script>
-    console.log('Скрипт загружен');
+    <div class="ctrl">
+      <button class="btn btn-go"   id="bstart">▶&nbsp;ЗАПУСТИТЬ ДЕТЕКЦИЮ</button>
+      <button class="btn btn-stop" id="bstop" >■&nbsp;ОСТАНОВИТЬ</button>
+    </div>
 
-    async function updateDetections() {
-        console.log('updateDetections вызвана');
-        try {
-            const response = await fetch('/api/detections');
-            const data = await response.json();
-            console.log('Данные получены:', data);
+    <div class="metrics">
+      <div class="mcard"><div class="mval" id="mfps">0</div><div class="mlbl">FPS</div></div>
+      <div class="mcard"><div class="mval" id="mcar"  style="color:#4488ff">0</div><div class="mlbl">Авто</div></div>
+      <div class="mcard"><div class="mval" id="mpers" style="color:#00e676">0</div><div class="mlbl">Люди</div></div>
+      <div class="mcard"><div class="mval" id="mother" style="color:#ffaa44">0</div><div class="mlbl">Прочее</div></div>
+    </div>
+  </div>
 
-            // FPS
-            const fpsSpan = document.getElementById('fps-value');
-            if (fpsSpan) fpsSpan.textContent = data.fps || 0;
+  <!-- Правая панель -->
+  <div class="sidebar">
 
-            // Статус детекции
-            const statusSpan = document.getElementById('detection-status');
-            if (statusSpan) {
-                if (data.detection_enabled) {
-                    statusSpan.textContent = 'АКТИВНА';
-                    statusSpan.className = 'status-active';
-                } else {
-                    statusSpan.textContent = 'ОСТАНОВЛЕНА';
-                    statusSpan.className = 'status-inactive';
-                }
-            }
+    <div class="panel">
+      <div class="ph">СИСТЕМА <div class="dot" id="sdot"></div></div>
+      <div class="srow"><span class="sk">Детекция</span><span class="sv off" id="sstatus">ВЫКЛ</span></div>
+      <div class="srow"><span class="sk">Поток</span><span class="sv on">АКТИВЕН</span></div>
+      <div class="srow"><span class="sk">Аптайм</span><span class="sv" id="suptime">—</span></div>
+    </div>
 
-            // Счётчики
-            const counts = data.class_counts || {};
-            const personSpan = document.getElementById('person-count');
-            const carSpan = document.getElementById('car-count');
-            const busSpan = document.getElementById('bus-count');
-            const truckSpan = document.getElementById('truck-count');
+    <div class="panel">
+      <div class="ph">ОБЪЕКТЫ В КАДРЕ</div>
+      <div class="objlist" id="objlist"><div class="empty">Нет объектов</div></div>
+    </div>
 
-            if (personSpan) personSpan.textContent = counts.person || 0;
-            if (carSpan) carSpan.textContent = counts.car || 0;
-            if (busSpan) busSpan.textContent = counts.bus || 0;
-            if (truckSpan) truckSpan.textContent = counts.truck || 0;
+    <div class="panel">
+      <div class="ph">СЧЁТЧИК КЛАССОВ</div>
+      <div class="srow"><span class="sk">Автомобили</span><span class="sv" id="scar">0</span></div>
+      <div class="srow"><span class="sk">Автобусы</span><span class="sv" id="sbus">0</span></div>
+      <div class="srow"><span class="sk">Грузовики</span><span class="sv" id="struck">0</span></div>
+      <div class="srow"><span class="sk">Люди</span><span class="sv" id="spers">0</span></div>
+    </div>
 
-            // Веса
-            const weightsSpan = document.getElementById('weights-info');
-            if (weightsSpan) weightsSpan.textContent = 'yolov8n';
+  </div>
+</div>
 
-            // Список объектов
-            const objects = data.objects || [];
-            const detectionsList = document.getElementById('detections-list');
+<script>
+const t0 = Date.now();
+const COLORS = {car:'#4488ff',bus:'#ffaa44',truck:'#ff6020',person:'#00e676',motorcycle:'#cc88ff',bicycle:'#00bb88'};
 
-            if (detectionsList) {
-                if (objects.length > 0) {
-                    let html = '';
-                    for (const obj of objects) {
-                        let colorClass = '';
-                        if (obj.class === 'person') colorClass = 'detection-person';
-                        else if (obj.class === 'car') colorClass = 'detection-car';
-                        else if (obj.class === 'bus') colorClass = 'detection-bus';
-                        else if (obj.class === 'truck') colorClass = 'detection-truck';
+// Часы
+setInterval(()=>{
+  const n=new Date();
+  document.getElementById('clock').textContent=n.toLocaleTimeString('ru-RU',{hour12:false});
+},1000);
 
-                        const timeStr = obj.time ? `${obj.time}s` : '—';
-                        html += `<div class="detection-item">
-                            <span class="${colorClass}">${obj.class}</span>
-                            | ID: ${obj.track_id || '—'}
-                            | время: ${timeStr}
-                            | уверенность: ${obj.confidence}
-                        </div>`;
-                    }
-                    detectionsList.innerHTML = html;
-                } else {
-                    detectionsList.innerHTML = '<div style="color: #aaa;">Нет обнаруженных объектов</div>';
-                }
-            }
-        } catch (error) {
-            console.error('Ошибка:', error);
-            const detectionsList = document.getElementById('detections-list');
-            if (detectionsList) {
-                detectionsList.innerHTML = '<div style="color: red;">Ошибка подключения к серверу</div>';
-            }
-        }
-    }
+function fmt_uptime(){
+  const s=Math.floor((Date.now()-t0)/1000);
+  return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(v=>String(v).padStart(2,'0')).join(':');
+}
 
-    // Кнопки
-    document.getElementById('btn-start-detection')?.addEventListener('click', async () => {
-        await fetch('/api/detection/start', { method: 'POST' });
-        updateDetections();
-    });
+async function poll(){
+  try{
+    const d=await(await fetch('/api/detections')).json();
+    const fps=d.fps||0;
+    document.getElementById('mfps').textContent=fps;
+    document.getElementById('fpsbadge').textContent=fps+' FPS';
+    document.getElementById('suptime').textContent=fmt_uptime();
 
-    document.getElementById('btn-stop-detection')?.addEventListener('click', async () => {
-        await fetch('/api/detection/stop', { method: 'POST' });
-        updateDetections();
-    });
+    const on=d.detection_enabled;
+    document.getElementById('sdot').className='dot'+(on?' on':'');
+    const ss=document.getElementById('sstatus');
+    ss.textContent=on?'АКТИВНА':'ВЫКЛ';
+    ss.className='sv '+(on?'on':'off');
 
-    // Запускаем обновление
-    setInterval(updateDetections, 500);
-    updateDetections();
+    const cc=d.class_counts||{};
+    document.getElementById('mcar').textContent=cc.car||0;
+    document.getElementById('mpers').textContent=cc.person||0;
+    document.getElementById('mother').textContent=(cc.bus||0)+(cc.truck||0)+(cc.motorcycle||0);
+    document.getElementById('scar').textContent=cc.car||0;
+    document.getElementById('sbus').textContent=cc.bus||0;
+    document.getElementById('struck').textContent=cc.truck||0;
+    document.getElementById('spers').textContent=cc.person||0;
+
+    const objs=d.objects||[];
+    const ol=document.getElementById('objlist');
+    ol.innerHTML=objs.length?objs.map(o=>{
+      const c=COLORS[o.class]||'#aaa';
+      const lg=o.long_stay?'olong':'';
+      return `<div class="objitem">
+        <div class="odot" style="background:${c};box-shadow:0 0 5px ${c}"></div>
+        <span class="oname">${o.class.toUpperCase()}</span>
+        <span class="ometa">ID:${o.track_id??'—'}&nbsp;${o.confidence}</span>
+        <span class="otime ${lg}">${o.time}s</span>
+      </div>`;
+    }).join(''):'<div class="empty">Нет объектов</div>';
+  }catch(e){console.warn(e)}
+}
+
+document.getElementById('bstart').onclick=async()=>{
+  await fetch('/api/detection/start',{method:'POST'}); poll();
+};
+document.getElementById('bstop').onclick=async()=>{
+  await fetch('/api/detection/stop',{method:'POST'}); poll();
+};
+
+setInterval(poll,600); poll();
 </script>
 </body>
 </html>

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>АЗС · Облако</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!-- Chart.js для графика -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#080b12;--surf:#0e1420;--card:#131a28;--bord:#1c2840;
+  --acc:#00c8ff;--acc2:#ff6020;--grn:#00e676;--red:#ff3d71;
+  --txt:#b8ccec;--mut:#3a4f70;
+  --font:'Rajdhani',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh}
+
+/* ── экран входа ─────────────────────────────────────── */
+.login-screen{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:20px;
+}
+.login-box{
+  background:var(--card);border:1px solid var(--bord);border-radius:8px;
+  padding:40px;width:100%;max-width:380px;
+}
+.login-logo{
+  text-align:center;font-size:22px;font-weight:700;
+  letter-spacing:3px;color:var(--acc);margin-bottom:6px
+}
+.login-sub{text-align:center;color:var(--mut);font-size:13px;margin-bottom:28px}
+.lf{margin-bottom:16px}
+.lf label{display:block;font-size:12px;letter-spacing:1px;color:var(--mut);margin-bottom:5px}
+.lf input{
+  width:100%;padding:10px 12px;border-radius:4px;border:1px solid var(--bord);
+  background:var(--surf);color:var(--txt);font-family:var(--mono);font-size:14px
+}
+.lf input:focus{outline:none;border-color:var(--acc)}
+.lbtn{
+  width:100%;padding:12px;border:none;border-radius:5px;
+  background:linear-gradient(135deg,#0090bb,var(--acc));color:#000;
+  font-family:var(--font);font-size:16px;font-weight:700;
+  letter-spacing:1px;cursor:pointer;transition:.2s;margin-top:8px
+}
+.lbtn:hover{box-shadow:0 0 20px rgba(0,200,255,.4);transform:translateY(-1px)}
+.lerr{color:var(--red);font-size:13px;text-align:center;margin-top:10px;display:none}
+
+/* ── главный интерфейс ───────────────────────────────── */
+.app{display:none}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;height:52px;background:var(--surf);border-bottom:1px solid var(--bord);
+  position:sticky;top:0;z-index:100;
+}
+.logo{font-size:18px;font-weight:700;letter-spacing:3px;color:var(--acc)}
+.logo em{color:var(--txt);font-style:normal}
+.tbright{display:flex;gap:12px;align-items:center}
+.logout{
+  padding:5px 14px;border-radius:4px;border:1px solid var(--bord);
+  background:none;color:var(--mut);font-family:var(--font);
+  font-size:13px;font-weight:600;cursor:pointer;transition:.2s
+}
+.logout:hover{border-color:var(--red);color:var(--red)}
+.wrap{max-width:1400px;margin:0 auto;padding:16px 20px}
+.grid2{display:grid;grid-template-columns:1fr 340px;gap:14px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--bord);border-radius:6px;overflow:hidden;margin-bottom:14px}
+.ph{
+  padding:10px 16px;font-size:11px;font-weight:700;letter-spacing:2px;
+  text-transform:uppercase;color:var(--acc);border-bottom:1px solid var(--bord)
+}
+/* таблица */
+table{width:100%;border-collapse:collapse}
+th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--acc);background:var(--surf);border-bottom:1px solid var(--bord)}
+td{padding:9px 14px;font-size:14px;border-bottom:1px solid rgba(255,255,255,.03)}
+tr:last-child td{border-bottom:none}
+tr.ev-row{cursor:pointer;transition:.15s}
+tr.ev-row:hover{background:rgba(0,200,255,.04)}
+td.ts{font-family:var(--mono);font-size:12px;color:var(--mut)}
+.badge{padding:3px 10px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:1px}
+.b-appear{background:rgba(0,200,255,.15);color:var(--acc);border:1px solid var(--acc)}
+.b-long  {background:rgba(255,61,113,.15);color:var(--red);border:1px solid var(--red)}
+.empty{text-align:center;color:var(--mut);padding:30px;font-size:14px}
+.thumb{width:90px;height:54px;object-fit:cover;border-radius:3px;border:1px solid var(--bord);cursor:pointer}
+/* фильтры */
+.filters{
+  display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;
+  padding:12px 16px;border-bottom:1px solid var(--bord)
+}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fg label{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--mut)}
+input[type=date],select{
+  padding:7px 10px;border-radius:4px;border:1px solid var(--bord);
+  background:var(--surf);color:var(--txt);font-family:var(--mono);font-size:13px
+}
+.btn{padding:7px 16px;border:none;border-radius:4px;font-family:var(--font);font-size:14px;font-weight:700;cursor:pointer;transition:.2s}
+.btn-f{background:var(--acc);color:#000;align-self:flex-end}
+/* пагинация */
+.pager{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px}
+.pbtn{
+  padding:5px 14px;border-radius:4px;border:1px solid var(--bord);
+  background:var(--surf);color:var(--txt);font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:.2s
+}
+.pbtn:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+.pbtn:disabled{opacity:.3;cursor:default}
+.pinfo{font-family:var(--mono);font-size:12px;color:var(--mut)}
+/* статистика */
+.chartbox{padding:16px;height:220px}
+.stat-row{display:flex;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.03);font-size:14px}
+.stat-row:last-child{border-bottom:none}
+.sk{color:var(--mut)}.sv{font-family:var(--mono);color:var(--txt);font-weight:600}
+/* модалка */
+.modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);align-items:center;justify-content:center;padding:20px}
+.modal.open{display:flex}
+.mbox{background:var(--card);border:1px solid var(--bord);border-radius:8px;max-width:820px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;position:relative}
+.mclose{position:absolute;top:14px;right:16px;width:28px;height:28px;border-radius:50%;border:none;background:var(--surf);color:var(--txt);font-size:18px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center}
+.mclose:hover{background:var(--red);color:#fff}
+.mimg{width:100%;border-radius:6px;margin-top:12px;max-height:460px;object-fit:contain}
+.mtag{background:var(--surf);border:1px solid var(--bord);border-radius:4px;padding:5px 12px;font-family:var(--mono);font-size:12px;display:inline-block;margin:0 6px 6px 0}
+.mtag span{color:var(--acc);margin-left:4px}
+</style>
+</head>
+<body>
+
+<!-- Экран входа -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">АЗС · ОБЛАКО</div>
+    <div class="login-sub">Система видеонаблюдения — удалённый доступ</div>
+    <div class="lf">
+      <label>Логин</label>
+      <input type="text" id="uname" value="admin" placeholder="admin">
+    </div>
+    <div class="lf">
+      <label>Пароль</label>
+      <input type="password" id="upass" value="admin" placeholder="admin"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="lbtn" onclick="doLogin()">Войти</button>
+    <div class="lerr" id="lerr"></div>
+  </div>
+</div>
+
+<!-- Главный интерфейс -->
+<div class="app" id="app">
+  <div class="topbar">
+    <div class="logo">АЗС<em> · ОБЛАКО</em></div>
+    <div class="tbright">
+      <span style="font-family:var(--mono);font-size:12px;color:var(--mut)" id="cloudUser"></span>
+      <button class="logout" onclick="logout()">Выйти</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="grid2">
+
+      <!-- Левая: таблица событий -->
+      <div>
+        <div class="panel">
+          <div class="ph">ИСТОРИЯ СОБЫТИЙ</div>
+          <div class="filters">
+            <div class="fg">
+              <label>От</label>
+              <input type="date" id="cf_from">
+            </div>
+            <div class="fg">
+              <label>До</label>
+              <input type="date" id="cf_to">
+            </div>
+            <div class="fg">
+              <label>Тип</label>
+              <select id="cf_type">
+                <option value="">Все</option>
+                <option value="Появление объекта">Появление объекта</option>
+                <option value="Долгое нахождение">Долгое нахождение</option>
+              </select>
+            </div>
+            <button class="btn btn-f" onclick="loadEvents(1)">Фильтр</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Время</th><th>Тип</th><th>Объект</th><th>Уверенность</th><th>Фото</th>
+              </tr>
+            </thead>
+            <tbody id="ctbody">
+              <tr><td colspan="6" class="empty">Загрузка…</td></tr>
+            </tbody>
+          </table>
+          <div class="pager" id="cpager"></div>
+        </div>
+      </div>
+
+      <!-- Правая: статистика -->
+      <div>
+        <div class="panel" style="margin-bottom:14px">
+          <div class="ph">ТРЕВОГИ ПО ДНЯМ</div>
+          <div class="chartbox">
+            <canvas id="statsChart"></canvas>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph">СВОДКА</div>
+          <div class="stat-row"><span class="sk">Всего событий</span><span class="sv" id="stTotal">—</span></div>
+          <div class="stat-row"><span class="sk">Источник</span><span class="sv">Облако (SQLite)</span></div>
+          <div class="stat-row"><span class="sk">Синхронизация</span><span class="sv" style="color:var(--grn)">Активна</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Модалка просмотра -->
+<div class="modal" id="modal">
+  <div class="mbox">
+    <button class="mclose" onclick="closeModal()">✕</button>
+    <div id="mcontent"></div>
+  </div>
+</div>
+
+<script>
+let cloudPage=1;
+let chart=null;
+
+// ─── авторизация ─────────────────────────────────────────────────────────
+async function doLogin(){
+  const u=document.getElementById('uname').value;
+  const p=document.getElementById('upass').value;
+  try{
+    const r=await fetch('/api/cloud/login',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p})
+    });
+    const d=await r.json();
+    if(d.ok){
+      document.getElementById('loginScreen').style.display='none';
+      document.getElementById('app').style.display='block';
+      document.getElementById('cloudUser').textContent=u;
+      loadEvents(1);
+      loadStats();
+    } else {
+      const e=document.getElementById('lerr');
+      e.textContent=d.message||'Ошибка';
+      e.style.display='block';
+    }
+  }catch(e){alert('Сервер недоступен')}
+}
+
+function logout(){
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('app').style.display='none';
+}
+
+// ─── события ─────────────────────────────────────────────────────────────
+async function loadEvents(page=1){
+  cloudPage=page;
+  const from=document.getElementById('cf_from').value;
+  const to  =document.getElementById('cf_to').value;
+  const type=document.getElementById('cf_type').value;
+  const qs=new URLSearchParams({page,per_page:10,event_type:type,date_from:from,date_to:to});
+  const d=await(await fetch('/api/cloud/events?'+qs)).json();
+
+  document.getElementById('stTotal').textContent=d.total;
+  renderTable(d.events);
+  renderPager(d.total,d.page,d.per_page);
+}
+
+function renderTable(events){
+  const tb=document.getElementById('ctbody');
+  if(!events.length){
+    tb.innerHTML='<tr><td colspan="6" class="empty">Нет событий в облаке</td></tr>';
+    return;
+  }
+  tb.innerHTML=events.map(e=>{
+    const isLong=e.event_type==='Долгое нахождение';
+    const badge=`<span class="badge ${isLong?'b-long':'b-appear'}">${e.event_type}</span>`;
+    const obj=e.class_name?`${e.class_name} · ID ${e.track_id??'—'}` :'—';
+    const conf=e.confidence!=null?e.confidence.toFixed(2):'—';
+    const shot=e.screenshot
+      ?`<img class="thumb" src="/${e.screenshot}" onclick="event.stopPropagation();showModal(${JSON.stringify(e)})">`
+      :'—';
+    return `<tr class="ev-row" onclick="showModal(${JSON.stringify(e).replace(/'/g,"&#39;")})">
+      <td class="ts">${e.id}</td>
+      <td class="ts">${e.timestamp??e.received_at}</td>
+      <td>${badge}</td>
+      <td>${obj}</td>
+      <td class="ts">${conf}</td>
+      <td>${shot}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPager(total,page,per){
+  const pages=Math.max(1,Math.ceil(total/per));
+  const p=document.getElementById('cpager');
+  if(pages<=1){p.innerHTML='';return;}
+  p.innerHTML=`
+    <button class="pbtn" onclick="loadEvents(${page-1})" ${page<=1?'disabled':''}>← Пред</button>
+    <span class="pinfo">Стр. ${page} / ${pages}</span>
+    <button class="pbtn" onclick="loadEvents(${page+1})" ${page>=pages?'disabled':''}>След →</button>
+  `;
+}
+
+// ─── статистика (график) ─────────────────────────────────────────────────
+async function loadStats(){
+  try{
+    const d=await(await fetch('/api/cloud/stats')).json();
+    const stats=d.stats||[];
+    const labels=stats.map(s=>s.day).reverse();
+    const values=stats.map(s=>s.cnt).reverse();
+
+    if(chart) chart.destroy();
+    const ctx=document.getElementById('statsChart').getContext('2d');
+    chart=new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels,
+        datasets:[{
+          label:'Тревоги',
+          data:values,
+          backgroundColor:'rgba(0,200,255,.25)',
+          borderColor:'rgba(0,200,255,.8)',
+          borderWidth:1,
+          borderRadius:3,
+        }]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{ticks:{color:'#3a4f70',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}},
+          y:{ticks:{color:'#3a4f70',font:{size:10},stepSize:1},grid:{color:'rgba(255,255,255,.04)'},beginAtZero:true}
+        }
+      }
+    });
+  }catch(e){console.warn('Статистика недоступна')}
+}
+
+// ─── модалка ──────────────────────────────────────────────────────────────
+function showModal(e){
+  const isLong=e.event_type==='Долгое нахождение';
+  const badge=`<span class="badge ${isLong?'b-long':'b-appear'}">${e.event_type}</span>`;
+  const img=e.screenshot?`<img class="mimg" src="/${e.screenshot}" alt="скриншот">`
+    :'<div style="color:var(--mut);padding:20px;text-align:center">Скриншот не загружен</div>';
+  document.getElementById('mcontent').innerHTML=`
+    <div style="margin-bottom:12px;font-size:18px;font-weight:700">${badge}</div>
+    <div style="margin-bottom:12px">
+      <span class="mtag">Время<span>${e.timestamp??e.received_at}</span></span>
+      <span class="mtag">Объект<span>${e.class_name??'—'}</span></span>
+      <span class="mtag">ID<span>${e.track_id??'—'}</span></span>
+      <span class="mtag">Уверенность<span>${e.confidence!=null?e.confidence.toFixed(2):'—'}</span></span>
+      <span class="mtag">Получено<span>${e.received_at??'—'}</span></span>
+    </div>
+    ${img}
+  `;
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal(){document.getElementById('modal').classList.remove('open')}
+document.getElementById('modal').addEventListener('click',function(e){if(e.target===this)closeModal()});
+</script>
+</body>
+</html>
