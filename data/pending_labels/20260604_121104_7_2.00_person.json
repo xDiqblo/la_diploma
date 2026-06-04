@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-04T12:11:04.212951",
+  "track_id": 7,
+  "track_length": 15,
+  "consensus": 1.0,
+  "suggested_class": "person",
+  "confidence": 2.0,
+  "bbox": [
+    462,
+    266,
+    959,
+    547
+  ],
+  "status": "pending"
+}

@@ -3,14 +3,19 @@ main_web.py — локальный веб-сервер (FastAPI) для сист
 Запуск: python main_web.py
 Адрес: http://localhost:8000
 """
-import cv2
-import time
-import threading
-import os
-from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+import cv2
+import logging
+import logging.handlers
+import os
+import shutil
+import threading
+import time
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, Request, UploadFile, File
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
@@ -19,45 +24,79 @@ from core.detector import Detector
 from core.video_buffer import VideoClipBuffer
 from core.cloud_sync import CloudSync
 from core.zones import ZoneManager
+from core.rtsp_manager import RTSPManager, probe_source
+from core.anomaly_detector import AnomalyDetector
+from core.incremental_trainer import (
+    HardExampleCollector,
+    PseudoLabeler,
+    IncrementalTrainer,
+    DIR_PENDING,
+    DIR_HARD,
+    DIR_CONFIRMED,
+)
 
-# Единая папка для медиа тревог (скриншоты + видеоклипы).
-# Раньше пути расходились (создавалась 'detections', а писалось в 'data/detections'),
-# из-за чего скриншоты/клипы терялись. Теперь всё в одной папке 'detections'.
-MEDIA_DIR = 'detections'
+# ---------------------------------------------------------------------------
+# Логирование с ротацией
+# ---------------------------------------------------------------------------
 
-# ─── создаём нужные папки ───────────────────────────────────────────────────
-for _d in ('templates', MEDIA_DIR, 'static'):
+os.makedirs('logs', exist_ok=True)
+_log_handler = logging.handlers.RotatingFileHandler(
+    'logs/app.log', maxBytes=10 * 1024 * 1024, backupCount=3, encoding='utf-8'
+)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[_log_handler, logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Папки
+# ---------------------------------------------------------------------------
+
+MEDIA_DIR   = 'detections'
+UPLOADS_DIR = 'data/uploads'   # временное хранилище загруженных видеофайлов
+
+for _d in (
+    'templates', MEDIA_DIR, 'static', UPLOADS_DIR,
+    'data/hard_examples', 'data/pending_labels',
+    'data/confirmed_labels', 'model/versions',
+):
     os.makedirs(_d, exist_ok=True)
 
-# ─── глобальные переменные ──────────────────────────────────────────────────
-frame_buffer = None            # последний кадр для MJPEG-стрима
-current_detections: list = []
+# ---------------------------------------------------------------------------
+# Глобальное состояние
+# ---------------------------------------------------------------------------
+
+frame_buffer: any          = None
+current_detections: list   = []
 current_class_counts: dict = {}
-current_zone_stats: list = []  # живые метрики по зонам
-detection_fps: int = 0
-running: bool = True
+current_zone_stats: list   = []
+detection_fps: int         = 0
+running: bool              = True
 video_clip_buffer: VideoClipBuffer | None = None
 
-# track_id, по которым уже создавались ГЛОБАЛЬНЫЕ события (не дублируем)
-_alerted_appear: set = set()
-_alerted_long:   set = set()
-# Время последней глобальной тревоги каждого типа — антидребезг
+_alerted_appear: set  = set()
+_alerted_long:   set  = set()
 _last_global_event: dict = {}
 
-# ─── загрузка настроек и инициализация зависимостей ─────────────────────────
+# ---------------------------------------------------------------------------
+# Инициализация компонентов
+# ---------------------------------------------------------------------------
+
 SETTINGS = config.load_settings()
 
 
-def _parse_video_source(src: str):
-    """Строка '0' → int(0) (USB-камера), иначе — RTSP/путь к файлу."""
-    try:
-        return int(src)
-    except ValueError:
-        return src
+def _best_model_path() -> str:
+    """Возвращает путь к лучшей доступной модели."""
+    for p in ('model/best.pt', 'model/yolov8n.pt'):
+        if os.path.exists(p):
+            return p
+    return 'model/yolov8n.pt'  # ultralytics скачает сама
 
 
 detector = Detector(
-    model_path='model/yolov8n.pt',
+    model_path=_best_model_path(),
     confidence_threshold=SETTINGS['confidence_threshold'],
     frame_skip=SETTINGS['frame_skip'],
     active_classes=SETTINGS['active_classes'],
@@ -70,37 +109,48 @@ cloud_sync = CloudSync(
     enabled=SETTINGS.get('cloud_sync_enabled', False),
 )
 
-# Менеджер зон срабатывания — основной источник «осмысленных» тревог.
 zone_manager = ZoneManager(
     zones=SETTINGS.get('zones', []),
     cooldown_default=SETTINGS.get('event_cooldown_seconds', 15),
 )
 
-# ─── сохранение события-тревоги ─────────────────────────────────────────────
+anomaly_detector = AnomalyDetector(
+    person_alone_timeout=60.0,
+    person_alone_cooldown=60.0,
+    person_long_stay_timeout=600.0,
+    person_long_cooldown=300.0,
+    car_alone_timeout=300.0,
+    car_alone_cooldown=120.0,
+)
 
-def save_event(event_type: str, obj: dict, frame, zone: str | None = None,
-               save_media: bool = True):
-    """
-    Сохраняет тревогу: скриншот → БД → видеоклип → Telegram.
-    save_media=False → пишем только строку в БД, без скриншота/клипа
-    (используется, если у зоны отключено сохранение медиа).
-    """
+rtsp_manager = RTSPManager(
+    source=SETTINGS.get('video_source', '0'),
+)
+
+hard_collector = HardExampleCollector()
+pseudo_labeler = PseudoLabeler()
+trainer        = IncrementalTrainer(model_dir='model')
+
+# ---------------------------------------------------------------------------
+# Сохранение события
+# ---------------------------------------------------------------------------
+
+def save_event(event_type: str, obj: dict, frame,
+               zone: str | None = None, save_media: bool = True):
     class_name = obj.get('class')
     track_id   = obj.get('track_id')
     confidence = obj.get('confidence')
 
-    # 1. Скриншот (только для «настоящих» тревог и если включено в настройках)
     screenshot_path = None
-    if save_media and SETTINGS.get('save_screenshots', True):
+    if save_media and SETTINGS.get('save_screenshots', True) and frame is not None:
         fname = f"shot_{time.strftime('%Y%m%d_%H%M%S')}_id{track_id}.jpg"
         path  = os.path.join(MEDIA_DIR, fname)
         try:
             cv2.imwrite(path, frame)
             screenshot_path = f'{MEDIA_DIR}/{fname}'
-        except Exception as e:
-            print(f'[Событие] Не удалось сохранить скриншот: {e}')
+        except Exception as exc:
+            logger.error('Не удалось сохранить скриншот: %s', exc)
 
-    # 2. Запись в SQLite (зона попадает в отдельную колонку для отчётности)
     event_id = database.add_event(
         event_type=event_type,
         class_name=class_name,
@@ -110,60 +160,61 @@ def save_event(event_type: str, obj: dict, frame, zone: str | None = None,
         screenshot=screenshot_path,
     )
 
-    # 3. Видеоклип (асинхронно — внутри VideoClipBuffer)
     if save_media and SETTINGS.get('save_video_clips', True) and video_clip_buffer:
         def _on_clip_ready(path: str):
             database.update_event_clip(event_id, path.replace('\\', '/'))
         video_clip_buffer.start_clip(on_complete=_on_clip_ready)
 
-    # 4. Telegram
     if SETTINGS.get('telegram_enabled', False):
         token   = SETTINGS.get('telegram_token', '')
         chat_id = SETTINGS.get('telegram_chat_id', '')
         zone_line = f'Зона: {zone}\n' if zone else ''
-        caption = (f'🚨 {event_type}\n'
-                   f'{zone_line}'
-                   f'Объект: {class_name} (ID {track_id})\n'
-                   f'Уверенность: {confidence}\n'
-                   f'Время: {time.strftime("%H:%M:%S")}')
+        caption = (
+            f'ТРЕВОГА: {event_type}\n'
+            f'{zone_line}'
+            f'Объект: {class_name} (ID {track_id})\n'
+            f'Уверенность: {confidence}\n'
+            f'Время: {time.strftime("%H:%M:%S")}'
+        )
         if screenshot_path and os.path.exists(screenshot_path):
             telegram_notify.send_photo(token, chat_id, screenshot_path, caption)
         else:
             telegram_notify.send_message(token, chat_id, caption)
 
-    print(f'[Событие] {event_type} | зона={zone} | {class_name} '
-          f'ID:{track_id} conf:{confidence}')
+    logger.info('Событие: %s | зона=%s | %s ID:%s conf:%s',
+                event_type, zone, class_name, track_id, confidence)
 
 
 def handle_events(frame, detections: list):
-    """
-    Создаёт тревоги. Главный механизм — ПРАВИЛА ЗОН: тревога возникает только в
-    заданной области кадра, поэтому проезжающие мимо машины больше не засыпают
-    папки скриншотами. Глобальные тревоги (на весь кадр) по умолчанию выключены
-    и служат запасным вариантом, когда зоны ещё не настроены.
-    """
-    now = time.time()
+    now  = time.time()
     h, w = frame.shape[:2]
 
-    # 1. Тревоги по зонам
+    # Тревоги по зонам
     for ev in zone_manager.process(detections, w, h, now):
         save_event(ev['event_type'], ev['obj'], frame,
                    zone=ev['zone'], save_media=ev['save_media'])
 
-    # 2. Глобальные тревоги — только если оператор явно их включил
-    cooldown = SETTINGS.get('event_cooldown_seconds', 15)
+    # Аномалии АЗС
+    for alert in anomaly_detector.process(detections, now):
+        save_event(alert['type'], alert['obj'], frame)
+
+    # Сбор данных для дообучения
+    hard_collector.process(frame, detections)
+    pseudo_labeler.update(frame, detections)
+
+    # Глобальные тревоги (если включены)
+    cooldown   = SETTINGS.get('event_cooldown_seconds', 15)
     alert_conf = SETTINGS.get('alert_confidence', 0.7)
     appear_on  = SETTINGS.get('alert_on_appearance', False)
     long_on    = SETTINGS.get('global_long_stay_alerts', False)
+    if not (appear_on or long_on):
+        return
 
     def _cooldown_ok(key: str) -> bool:
         if now - _last_global_event.get(key, 0) < cooldown:
             return False
         _last_global_event[key] = now
         return True
-
-    if not (appear_on or long_on):
-        return
 
     for obj in detections:
         tid = obj.get('track_id')
@@ -179,112 +230,115 @@ def handle_events(frame, detections: list):
             save_event('Долгое нахождение', obj, frame)
 
 
-# ─── поток захвата и обработки видео ────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Поток захвата и обработки кадров
+# ---------------------------------------------------------------------------
 
 def capture_loop():
     global frame_buffer, current_detections, current_class_counts
     global current_zone_stats, detection_fps, running, video_clip_buffer
 
-    source = _parse_video_source(SETTINGS.get('video_source', 'test_videos/test_video3.mp4'))
-    cap = cv2.VideoCapture(source)
-
-    if not cap.isOpened():
-        print(f'[ОШИБКА] Не удалось открыть источник видео: {source}')
-        return
-
-    video_fps = cap.get(cv2.CAP_PROP_FPS) or 25
-    frame_delay = 1.0 / video_fps
-    print(f'[Камера] Источник: {source}  FPS: {video_fps:.1f}')
-
-    # Кольцевой буфер видео
+    # Инициализируем буфер с дефолтными параметрами
+    # (пересоздаём при смене источника если нужен другой FPS)
     video_clip_buffer = VideoClipBuffer(
-        fps=int(video_fps),
+        fps=25,
         pre_seconds=SETTINGS.get('clip_pre_seconds', 10),
         post_seconds=SETTINGS.get('clip_post_seconds', 10),
         out_dir=MEDIA_DIR,
     )
 
-    frame_count   = 0
-    fps_timer     = time.time()
-    last_frame_t  = time.time()
+    frame_count  = 0
+    fps_timer    = time.time()
+    last_fps_upd = time.time()
+
+    logger.info('Поток захвата запущен')
 
     while running:
-        # Контроль скорости (важно при воспроизведении видеофайла, не RTSP)
-        elapsed = time.time() - last_frame_t
-        if elapsed < frame_delay:
-            time.sleep(frame_delay - elapsed)
-
-        ret, frame = cap.read()
-        if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # зацикливаем видеофайл
+        frame = rtsp_manager.read()
+        if frame is None:
+            time.sleep(0.02)
             continue
-        last_frame_t = time.time()
 
         processed, dets, counts = detector.process_frame(frame)
-
-        # Рисуем зоны поверх кадра — они видны в потоке и попадают в скриншоты.
         zone_manager.draw(processed)
 
-        current_detections  = dets
+        current_detections   = dets
         current_class_counts = counts
 
         if detector.enabled:
-            handle_events(processed, dets)        # тревоги по зонам/глобальные
+            handle_events(processed, dets)
             video_clip_buffer.add_frame(processed)
             current_zone_stats = zone_manager.get_live()
 
         frame_buffer = processed
 
-        # Подсчёт FPS
         frame_count += 1
-        if time.time() - fps_timer >= 1.0:
+        now = time.time()
+        if now - fps_timer >= 1.0:
             detection_fps = frame_count
             frame_count   = 0
-            fps_timer     = time.time()
-
-    cap.release()
+            fps_timer     = now
 
 
-# ─── lifespan FastAPI ────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Lifespan
+# ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global running
     database.init_db()
     running = True
+
+    rtsp_manager.start()
     t = threading.Thread(target=capture_loop, daemon=True, name='capture')
     t.start()
     cloud_sync.start()
+
     print('=' * 55)
-    print('  Веб-приложение камеры АЗС (локальный хост)')
+    print('  Веб-приложение камеры АЗС')
     print('  http://localhost:8000')
     print('=' * 55)
+    logger.info('Сервер запущен')
     yield
+
+    logger.info('Сервер останавливается...')
     running = False
+    rtsp_manager.stop()    # stop() гарантирует release VideoCapture
     cloud_sync.stop()
-    t.join(timeout=3)
-    print('[Сервер] Остановлен')
+    t.join(timeout=4)
+    logger.info('Сервер остановлен')
 
 
-# ─── приложение ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# FastAPI
+# ---------------------------------------------------------------------------
 
 app = FastAPI(title='Камера АЗС', lifespan=lifespan)
 app.mount('/detections', StaticFiles(directory='detections'), name='detections')
 app.mount('/static',     StaticFiles(directory='static'),     name='static')
 
 
-# ─── MJPEG стрим ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# MJPEG стрим
+# ---------------------------------------------------------------------------
 
 def _mjpeg_gen():
+    """
+    Генератор MJPEG. Спит не дольше 40 мс между кадрами,
+    чтобы не нагружать CPU при статичном frame_buffer.
+    """
+    prev_id = id(None)
     while running:
-        if frame_buffer is not None:
-            ok, jpeg = cv2.imencode('.jpg', frame_buffer,
-                                    [cv2.IMWRITE_JPEG_QUALITY, 75])
-            if ok:
-                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'
-                       + jpeg.tobytes() + b'\r\n')
-        else:
+        fb = frame_buffer
+        if fb is None or id(fb) == prev_id:
             time.sleep(0.02)
+            continue
+        prev_id = id(fb)
+        ok, jpeg = cv2.imencode('.jpg', fb, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        if ok:
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'
+                   + jpeg.tobytes() + b'\r\n')
 
 
 @app.get('/video_feed')
@@ -295,7 +349,9 @@ async def video_feed():
     )
 
 
-# ─── HTML страницы ────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# HTML-страницы
+# ---------------------------------------------------------------------------
 
 def _read_html(name: str) -> str:
     path = os.path.join('templates', name)
@@ -315,8 +371,13 @@ async def page_events():   return HTMLResponse(_read_html('events.html'))
 @app.get('/settings', response_class=HTMLResponse)
 async def page_settings(): return HTMLResponse(_read_html('settings.html'))
 
+@app.get('/retrain',  response_class=HTMLResponse)
+async def page_retrain():  return HTMLResponse(_read_html('retrain.html'))
 
-# ─── API: детекция ───────────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# API: детекция
+# ---------------------------------------------------------------------------
 
 @app.get('/api/detections')
 async def api_detections():
@@ -325,7 +386,7 @@ async def api_detections():
         'fps':               detection_fps,
         'objects':           current_detections,
         'class_counts':      current_class_counts,
-        'zones':             current_zone_stats,   # живые метрики по зонам
+        'zones':             current_zone_stats,
     }
 
 
@@ -335,6 +396,7 @@ async def api_start():
     _alerted_long.clear()
     _last_global_event.clear()
     zone_manager.reset_runtime()
+    anomaly_detector.reset()
     detector.set_enabled(True)
     return {'status': 'started'}
 
@@ -343,30 +405,110 @@ async def api_start():
 async def api_stop():
     global current_zone_stats
     detector.set_enabled(False)
-    zone_manager.reset_runtime()           # обнуляем живые счётчики зон
+    zone_manager.reset_runtime()
+    anomaly_detector.reset()
     current_zone_stats = zone_manager.get_live()
     return {'status': 'stopped'}
 
 
-# ─── API: события ────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# API: видеопоток — смена источника, загрузка файла, проверка камеры
+# ---------------------------------------------------------------------------
+
+@app.get('/api/stream/status')
+async def api_stream_status():
+    return rtsp_manager.get_status()
+
+
+@app.post('/api/stream/change')
+async def api_stream_change(request: Request):
+    """
+    Горячая смена источника видео.
+    Body: {"source": "0"} | {"source": "rtsp://..."} | {"source": "data/uploads/vid.mp4"}
+    """
+    global SETTINGS
+    data       = await request.json()
+    new_source = data.get('source', '').strip()
+    if not new_source:
+        return JSONResponse({'ok': False, 'error': 'source не задан'}, 400)
+
+    rtsp_manager.change_source(new_source)
+    SETTINGS = config.save_settings({'video_source': new_source})
+    logger.info('Источник видео изменён: %s', new_source)
+    return {'ok': True, 'source': new_source}
+
+
+@app.post('/api/stream/upload')
+async def api_stream_upload(file: UploadFile = File(...)):
+    """
+    Загрузка видеофайла с клиента.
+    После загрузки автоматически переключает поток на этот файл.
+    Поддерживаемые форматы: mp4, avi, mov, mkv, webm.
+    """
+    global SETTINGS
+
+    ALLOWED_EXT = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.ts', '.m4v'}
+    suffix = Path(file.filename or 'video').suffix.lower()
+    if suffix not in ALLOWED_EXT:
+        return JSONResponse(
+            {'ok': False, 'error': f'Недопустимый формат: {suffix}. '
+                                   f'Разрешены: {", ".join(ALLOWED_EXT)}'},
+            400,
+        )
+
+    # Сохраняем файл
+    safe_name = f"upload_{int(time.time())}{suffix}"
+    dest      = os.path.join(UPLOADS_DIR, safe_name)
+    try:
+        with open(dest, 'wb') as f_out:
+            shutil.copyfileobj(file.file, f_out)
+    except Exception as exc:
+        logger.error('Ошибка сохранения загруженного файла: %s', exc)
+        return JSONResponse({'ok': False, 'error': str(exc)}, 500)
+    finally:
+        await file.close()
+
+    size_mb = os.path.getsize(dest) / 1024 / 1024
+    logger.info('Файл загружен: %s (%.1f МБ)', dest, size_mb)
+
+    # Переключаем поток
+    rtsp_manager.change_source(dest)
+    SETTINGS = config.save_settings({'video_source': dest})
+
+    return {'ok': True, 'source': dest, 'filename': safe_name, 'size_mb': round(size_mb, 2)}
+
+
+@app.post('/api/stream/probe')
+async def api_stream_probe(request: Request):
+    """Проверяет доступность источника видео (не переключает)."""
+    data = await request.json()
+    url  = data.get('url', '').strip()
+    if not url:
+        return JSONResponse({'ok': False, 'error': 'url не задан'}, 400)
+    # probe_source блокирует — запускаем в потоке чтобы не блокировать event loop
+    import asyncio
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, probe_source, url, 5.0)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# API: события
+# ---------------------------------------------------------------------------
 
 @app.get('/api/events')
 async def api_events(
-    page: int = 1,
-    per_page: int = 10,
-    event_type: str = '',
-    date_from: str = '',
-    date_to: str = '',
-    zone: str = '',
+    page: int = 1, per_page: int = 10,
+    event_type: str = '', date_from: str = '',
+    date_to: str = '', zone: str = '',
 ):
-    et    = event_type or None
-    df    = date_from  or None
-    dt    = date_to    or None
-    zn    = zone       or None
+    et = event_type or None
+    df = date_from  or None
+    dt = date_to    or None
+    zn = zone       or None
     total = database.count_events(et, df, dt, zn)
     items = database.get_events(
-        limit=per_page,
-        offset=(page - 1) * per_page,
+        limit=per_page, offset=(page - 1) * per_page,
         event_type=et, date_from=df, date_to=dt, zone=zn,
     )
     return {'events': items, 'total': total, 'page': page, 'per_page': per_page}
@@ -374,7 +516,6 @@ async def api_events(
 
 @app.get('/api/events/zone_report')
 async def api_zone_report(date_from: str = '', date_to: str = ''):
-    """Отдельная отчётность по зонам (сводка тревог по каждой зоне)."""
     return {'report': database.zone_report(date_from or None, date_to or None)}
 
 
@@ -384,26 +525,28 @@ async def api_events_clear():
     return {'status': 'cleared'}
 
 
-# ─── API: зоны срабатывания ──────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# API: зоны
+# ---------------------------------------------------------------------------
 
 @app.get('/api/zones')
 async def api_get_zones():
-    """Текущие зоны (для рисования на плеере и редактирования правил)."""
     return {'zones': SETTINGS.get('zones', [])}
 
 
 @app.post('/api/zones')
 async def api_save_zones(request: Request):
-    """Сохраняет список зон и сразу применяет его к менеджеру зон (без рестарта)."""
     global SETTINGS
-    data = await request.json()
+    data  = await request.json()
     zones = data.get('zones', [])
     SETTINGS = config.save_settings({'zones': zones})
     zone_manager.update_zones(zones)
     return {'status': 'saved', 'zones': zones}
 
 
-# ─── API: настройки ──────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# API: настройки
+# ---------------------------------------------------------------------------
 
 @app.get('/api/settings')
 async def api_get_settings():
@@ -413,9 +556,9 @@ async def api_get_settings():
 @app.post('/api/settings')
 async def api_save_settings(request: Request):
     global SETTINGS
-    data = await request.json()
+    data     = await request.json()
     SETTINGS = config.save_settings(data)
-    # Применяем к детектору без перезапуска
+
     detector.update_settings(
         confidence_threshold=SETTINGS['confidence_threshold'],
         frame_skip=SETTINGS['frame_skip'],
@@ -429,10 +572,18 @@ async def api_save_settings(request: Request):
     )
     zone_manager.update_zones(SETTINGS.get('zones', []))
     zone_manager.cooldown_default = SETTINGS.get('event_cooldown_seconds', 15)
+
+    # Смена источника через настройки (если поле изменилось)
+    new_src = SETTINGS.get('video_source', '')
+    if new_src and new_src != rtsp_manager.get_status()['source']:
+        rtsp_manager.change_source(new_src)
+
     return {'status': 'saved', 'settings': SETTINGS}
 
 
-# ─── API: Telegram тест ──────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# API: Telegram
+# ---------------------------------------------------------------------------
 
 @app.post('/api/telegram/test')
 async def api_telegram_test():
@@ -443,7 +594,161 @@ async def api_telegram_test():
     return JSONResponse({'ok': ok, 'message': msg})
 
 
-# ─── точка входа ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# API: дообучение
+# ---------------------------------------------------------------------------
+
+@app.get('/api/retrain/status')
+async def api_retrain_status():
+    trainer_status  = trainer.get_status()
+    collector_stats = hard_collector.get_stats()
+    labeler_stats   = pseudo_labeler.get_stats()
+    return {
+        **trainer_status,
+        **collector_stats,
+        **labeler_stats,
+        'hard_count':      collector_stats.get('hard_examples_total', 0),
+        'pending_count':   labeler_stats.get('pending_total', 0),
+        'confirmed_count': labeler_stats.get('confirmed_total', 0),
+    }
+
+
+@app.get('/api/retrain/pending')
+async def api_retrain_pending():
+    items = pseudo_labeler.get_pending()
+    return {'items': items, 'total': len(items)}
+
+
+@app.get('/api/retrain/hard_examples')
+async def api_retrain_hard():
+    from core.incremental_trainer import _load_meta
+    items = []
+    for img_path in sorted(DIR_HARD.glob('*.jpg'), reverse=True)[:100]:
+        meta = _load_meta(img_path)
+        items.append({
+            'filename':        img_path.name,
+            'suggested_class': meta.get('suggested_class', 'unknown'),
+            'confidence':      meta.get('confidence', 0.0),
+            'track_id':        meta.get('track_id', -1),
+            'reason':          meta.get('reason', ''),
+            'timestamp':       meta.get('timestamp', ''),
+        })
+    return {'items': items, 'total': len(items)}
+
+
+@app.get('/api/retrain/image')
+async def api_retrain_image(file: str, dir: str = 'pending'):
+    base      = DIR_PENDING if dir == 'pending' else DIR_HARD
+    safe_name = Path(file).name
+    img_path  = base / safe_name
+    if not img_path.exists() or img_path.suffix.lower() not in ('.jpg', '.jpeg', '.png'):
+        return JSONResponse({'error': 'Файл не найден'}, 404)
+    return FileResponse(str(img_path), media_type='image/jpeg')
+
+
+@app.post('/api/retrain/confirm')
+async def api_retrain_confirm(request: Request):
+    data            = await request.json()
+    filename        = data.get('filename', '')
+    confirmed_class = data.get('confirmed_class', '')
+    if not filename or not confirmed_class:
+        return JSONResponse({'ok': False, 'error': 'filename и confirmed_class обязательны'}, 400)
+    return {'ok': trainer.confirm_label(filename, confirmed_class)}
+
+
+@app.post('/api/retrain/reject')
+async def api_retrain_reject(request: Request):
+    data     = await request.json()
+    filename = data.get('filename', '')
+    if not filename:
+        return JSONResponse({'ok': False, 'error': 'filename обязателен'}, 400)
+    return {'ok': trainer.reject_label(filename)}
+
+
+@app.post('/api/retrain/confirm_all')
+async def api_retrain_confirm_all():
+    count = trainer.confirm_all()
+    return {'ok': True, 'confirmed': count}
+
+
+@app.post('/api/retrain/start')
+async def api_retrain_start():
+    confirmed = trainer.get_confirmed_count()
+    if confirmed < 30:
+        return {'started': False,
+                'reason': f'Недостаточно подтверждённых примеров: {confirmed} < 30'}
+
+    def _on_model_ready(path: str):
+        try:
+            from ultralytics import YOLO
+            detector.model = YOLO(path)
+            logger.info('Горячая замена модели: %s', path)
+        except Exception as exc:
+            logger.error('Ошибка горячей замены модели: %s', exc)
+
+    started = trainer.start_training(on_ready=_on_model_ready)
+    return {'started': started,
+            'reason': '' if started else 'Дообучение уже запущено'}
+
+
+@app.get('/api/retrain/versions')
+async def api_retrain_versions():
+    return {'versions': trainer.get_model_versions()}
+
+
+@app.post('/api/retrain/apply_version')
+async def api_retrain_apply_version(request: Request):
+    data     = await request.json()
+    filename = data.get('filename', '')
+    if not filename:
+        return JSONResponse({'ok': False, 'error': 'filename обязателен'}, 400)
+    path = trainer.apply_version(filename)
+    if path is None:
+        return JSONResponse({'ok': False, 'error': 'Версия не найдена'}, 404)
+    try:
+        from ultralytics import YOLO
+        detector.model = YOLO(path)
+        logger.info('Откат к версии: %s', filename)
+    except Exception as exc:
+        return JSONResponse({'ok': False, 'error': str(exc)}, 500)
+    return {'ok': True, 'path': path}
+
+
+# ---------------------------------------------------------------------------
+# API: health / metrics
+# ---------------------------------------------------------------------------
+
+@app.get('/health')
+async def health():
+    return {
+        'status':    'ok',
+        'camera':    rtsp_manager.get_status()['status'],
+        'detection': detector.enabled,
+        'db':        os.path.exists('data/events.db'),
+        'model':     os.path.exists(_best_model_path()),
+    }
+
+
+@app.get('/metrics')
+async def metrics():
+    try:
+        import psutil
+        cpu = psutil.cpu_percent(interval=0.1)
+        mem = psutil.virtual_memory().percent
+    except ImportError:
+        cpu, mem = 0.0, 0.0
+    return {
+        'fps':         detection_fps,
+        'cpu_percent': cpu,
+        'mem_percent': mem,
+        'alerts_db':   database.count_events(),
+        'stream':      rtsp_manager.get_status()['status'],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Точка входа
+# ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
     import uvicorn

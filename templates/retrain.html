@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>АЗС - Дообучение модели</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:    #080b12;
+  --surf:  #0e1420;
+  --card:  #131a28;
+  --bord:  #1c2840;
+  --acc:   #00c8ff;
+  --grn:   #00e676;
+  --red:   #ff3d71;
+  --ylw:   #ffcc00;
+  --pur:   #a78bfa;
+  --txt:   #b8ccec;
+  --mut:   #3a4f70;
+  --font:  'Rajdhani', sans-serif;
+  --mono:  'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--txt); font-family: var(--font); min-height: 100vh; }
+
+/* ── топбар ──────────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 52px;
+  background: var(--surf); border-bottom: 1px solid var(--bord);
+  position: sticky; top: 0; z-index: 100;
+}
+.logo { font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--acc); }
+.logo em { color: var(--txt); font-style: normal; }
+.nav { display: flex; gap: 4px; }
+.nav a {
+  padding: 6px 16px; border-radius: 4px; font-size: 14px;
+  font-weight: 600; letter-spacing: 1px; color: var(--mut);
+  text-decoration: none; border: 1px solid transparent; transition: .2s;
+}
+.nav a:hover, .nav a.cur {
+  color: var(--acc); border-color: var(--acc);
+  background: rgba(0, 200, 255, .06);
+}
+
+/* ── layout ──────────────────────────────────────────── */
+.wrap { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+.top-grid {
+  display: grid; grid-template-columns: 1fr 340px;
+  gap: 14px; margin-bottom: 16px;
+}
+@media (max-width: 960px) { .top-grid { grid-template-columns: 1fr; } }
+
+/* ── панели ──────────────────────────────────────────── */
+.panel {
+  background: var(--card); border: 1px solid var(--bord);
+  border-radius: 6px; overflow: hidden;
+}
+.ph {
+  padding: 10px 16px; font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase;
+  color: var(--acc); border-bottom: 1px solid var(--bord);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.pbody { padding: 16px; }
+
+/* ── метрики-карточки ────────────────────────────────── */
+.metrics {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+}
+.mcard {
+  background: var(--card); border: 1px solid var(--bord);
+  border-radius: 6px; padding: 14px 10px; text-align: center;
+}
+.mval {
+  font-size: 28px; font-weight: 700; font-family: var(--mono);
+  color: var(--acc); line-height: 1;
+}
+.mlbl {
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--mut); margin-top: 6px;
+}
+
+/* ── прогресс подтверждения ──────────────────────────── */
+.progress-wrap {
+  margin: 10px 0;
+}
+.progress-bar-bg {
+  height: 8px; background: var(--bord); border-radius: 4px; overflow: hidden;
+}
+.progress-bar {
+  height: 100%; background: linear-gradient(90deg, #00b04a, #00e676);
+  border-radius: 4px; transition: width .4s ease;
+  min-width: 4px;
+}
+.progress-label {
+  font-family: var(--mono); font-size: 12px; color: var(--mut);
+  margin-top: 6px; display: flex; justify-content: space-between;
+}
+
+/* ── кнопки ──────────────────────────────────────────── */
+.btn {
+  padding: 10px 20px; border: none; border-radius: 5px;
+  font-family: var(--font); font-size: 14px; font-weight: 700;
+  letter-spacing: 1px; cursor: pointer; transition: .2s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:disabled { opacity: .35; cursor: default; }
+.btn-primary {
+  background: linear-gradient(135deg, #0090bb, var(--acc)); color: #000;
+}
+.btn-primary:not(:disabled):hover {
+  box-shadow: 0 0 20px rgba(0, 200, 255, .4); transform: translateY(-1px);
+}
+.btn-success {
+  background: linear-gradient(135deg, #00b04a, #00e676); color: #000;
+}
+.btn-success:not(:disabled):hover {
+  box-shadow: 0 0 20px rgba(0, 230, 118, .4); transform: translateY(-1px);
+}
+.btn-danger {
+  background: rgba(255, 61, 113, .12); color: var(--red);
+  border: 1px solid var(--red);
+}
+.btn-danger:not(:disabled):hover { background: rgba(255, 61, 113, .22); }
+.btn-outline {
+  background: var(--surf); color: var(--txt); border: 1px solid var(--bord);
+}
+.btn-outline:not(:disabled):hover { border-color: var(--acc); color: var(--acc); }
+.btn-sm { padding: 5px 12px; font-size: 13px; }
+
+/* ── кнопки управления над галереей ──────────────────── */
+.toolbar {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 14px;
+}
+.toolbar-right { margin-left: auto; display: flex; gap: 8px; }
+
+/* ── галерея карточек ────────────────────────────────── */
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.card {
+  background: var(--surf); border: 2px solid var(--bord);
+  border-radius: 6px; overflow: hidden;
+  transition: border-color .2s, box-shadow .2s;
+  position: relative;
+}
+.card.confirmed  { border-color: var(--grn); }
+.card.corrected  { border-color: var(--ylw); }
+.card.skipped    { border-color: var(--bord); opacity: .45; }
+.card-img-wrap {
+  position: relative; width: 100%; aspect-ratio: 16/9;
+  background: #000; overflow: hidden;
+}
+.card-img-wrap img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.card-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .55); opacity: 0;
+  transition: opacity .2s;
+}
+.card:hover .card-overlay { opacity: 1; }
+.card-status-badge {
+  position: absolute; top: 6px; left: 6px;
+  padding: 2px 8px; border-radius: 3px;
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  font-family: var(--mono);
+}
+.badge-pending   { background: rgba(0, 200, 255, .18); color: var(--acc); border: 1px solid var(--acc); }
+.badge-confirmed { background: rgba(0, 230, 118, .18); color: var(--grn); border: 1px solid var(--grn); }
+.badge-corrected { background: rgba(255, 204, 0, .18);  color: var(--ylw); border: 1px solid var(--ylw); }
+.badge-skipped   { background: rgba(58, 79, 112, .3);   color: var(--mut); border: 1px solid var(--bord); }
+
+.conf-bar {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 3px; background: var(--bord);
+}
+.conf-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--ylw), var(--grn));
+}
+
+.card-body { padding: 10px; }
+.card-cls {
+  font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 2px;
+}
+.card-meta {
+  font-family: var(--mono); font-size: 11px; color: var(--mut);
+  margin-bottom: 8px;
+}
+.card-actions { display: flex; gap: 5px; }
+
+/* ── пустая галерея ──────────────────────────────────── */
+.gallery-empty {
+  grid-column: 1 / -1;
+  text-align: center; padding: 50px 20px; color: var(--mut);
+  font-size: 15px; line-height: 1.8;
+}
+
+/* ── правая панель: статус дообучения ────────────────── */
+.stat-row {
+  display: flex; justify-content: space-between;
+  padding: 9px 16px; font-size: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, .03);
+}
+.stat-row:last-child { border-bottom: none; }
+.sk { color: var(--mut); }
+.sv { font-family: var(--mono); font-weight: 600; color: var(--txt); }
+
+/* ── прогресс дообучения ─────────────────────────────── */
+.train-progress {
+  padding: 14px 16px; display: none;
+}
+.train-progress.visible { display: block; }
+.tp-bar-bg {
+  height: 10px; background: var(--bord); border-radius: 5px;
+  overflow: hidden; margin: 8px 0;
+}
+.tp-bar {
+  height: 100%; border-radius: 5px;
+  background: linear-gradient(90deg, #6366f1, #00c8ff);
+  transition: width .5s ease;
+}
+.tp-log {
+  font-family: var(--mono); font-size: 12px; color: var(--mut);
+  margin-top: 8px; min-height: 36px; line-height: 1.4;
+}
+
+/* ── версии моделей ──────────────────────────────────── */
+.version-list { padding: 0; }
+.version-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,.03);
+  font-size: 13px;
+}
+.version-item:last-child { border-bottom: none; }
+.v-name { font-family: var(--mono); color: #fff; font-weight: 700; flex: 1; }
+.v-meta { font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.v-badge {
+  padding: 2px 8px; border-radius: 3px; font-size: 10px;
+  font-weight: 700; letter-spacing: 1px; border: 1px solid;
+}
+.v-active { color: var(--grn); border-color: var(--grn); background: rgba(0, 230, 118, .1); }
+.v-old    { color: var(--mut); border-color: var(--bord); background: var(--card); }
+
+/* ── уведомление о завершении дообучения ─────────────── */
+.notif {
+  display: none; padding: 14px 16px; border-radius: 6px;
+  font-size: 14px; margin-bottom: 14px; line-height: 1.5;
+  border: 1px solid;
+}
+.notif.ok  { background: rgba(0,230,118,.08); border-color: var(--grn); color: var(--grn); }
+.notif.err { background: rgba(255,61,113,.08); border-color: var(--red); color: var(--red); }
+.notif.info { background: rgba(0,200,255,.08); border-color: var(--acc); color: var(--acc); }
+.notif.visible { display: block; }
+
+/* ── выпадающий список классов ───────────────────────── */
+.class-select {
+  padding: 4px 8px; border-radius: 4px;
+  border: 1px solid var(--bord); background: var(--card);
+  color: var(--txt); font-family: var(--mono); font-size: 12px;
+  cursor: pointer; width: 100%;
+}
+.class-select:focus { outline: none; border-color: var(--acc); }
+
+/* ── вкладки ─────────────────────────────────────────── */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--bord); }
+.tab {
+  padding: 10px 18px; font-size: 13px; font-weight: 600;
+  letter-spacing: 1px; color: var(--mut); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: .2s;
+}
+.tab.active { color: var(--acc); border-bottom-color: var(--acc); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">АЗС<em> - CAM-01</em></div>
+  <nav class="nav">
+    <a href="/">МОНИТОР</a>
+    <a href="/events">СОБЫТИЯ</a>
+    <a href="/settings">НАСТРОЙКИ</a>
+    <a href="/retrain" class="cur">ДООБУЧЕНИЕ</a>
+  </nav>
+</div>
+
+<div class="wrap">
+
+  <!-- Уведомление (сообщения о результате) -->
+  <div class="notif" id="notif"></div>
+
+  <div class="top-grid">
+
+    <!-- Левая часть: метрики + галерея -->
+    <div>
+
+      <!-- Метрики -->
+      <div class="metrics" style="margin-bottom: 14px;">
+        <div class="mcard">
+          <div class="mval" id="mPending" style="color: var(--acc)">0</div>
+          <div class="mlbl">Ожидают подтверждения</div>
+        </div>
+        <div class="mcard">
+          <div class="mval" id="mConfirmed" style="color: var(--grn)">0</div>
+          <div class="mlbl">Подтверждено</div>
+        </div>
+        <div class="mcard">
+          <div class="mval" id="mHard" style="color: var(--ylw)">0</div>
+          <div class="mlbl">Трудных примеров</div>
+        </div>
+        <div class="mcard">
+          <div class="mval" id="mVersion" style="color: var(--pur)">—</div>
+          <div class="mlbl">Версия модели</div>
+        </div>
+      </div>
+
+      <!-- Прогресс подтверждения -->
+      <div class="panel" style="margin-bottom: 14px;">
+        <div class="ph">
+          <span>ПРОГРЕСС РАЗМЕТКИ</span>
+          <span id="progressText" style="font-family: var(--mono); font-size: 12px; color: var(--mut);">0 / 0</span>
+        </div>
+        <div class="pbody">
+          <div class="progress-wrap">
+            <div class="progress-bar-bg">
+              <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+            </div>
+            <div class="progress-label">
+              <span>Подтверждено для дообучения</span>
+              <span id="progressPct">0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Вкладки галереи -->
+      <div class="panel">
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab('pending')">Ожидают подтверждения</div>
+          <div class="tab" onclick="switchTab('hard')">Трудные примеры</div>
+        </div>
+
+        <!-- Вкладка: предложения системы -->
+        <div class="tab-content active" id="tab-pending">
+          <div class="pbody">
+            <div class="toolbar">
+              <button class="btn btn-success btn-sm" onclick="confirmAll()">
+                Подтвердить все
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="loadPending()">
+                Обновить
+              </button>
+              <div class="toolbar-right">
+                <span id="pendingCount" style="font-family: var(--mono); font-size: 13px; color: var(--mut); align-self: center;">
+                  0 предложений
+                </span>
+              </div>
+            </div>
+            <div class="gallery" id="galleryPending">
+              <div class="gallery-empty">
+                Детекция запущена? Система собирает трудные примеры автоматически.<br>
+                Предложения появятся здесь по мере накопления данных.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Вкладка: трудные примеры -->
+        <div class="tab-content" id="tab-hard">
+          <div class="pbody">
+            <div class="toolbar">
+              <button class="btn btn-outline btn-sm" onclick="loadHardExamples()">
+                Обновить
+              </button>
+              <div class="toolbar-right">
+                <span id="hardCount" style="font-family: var(--mono); font-size: 13px; color: var(--mut); align-self: center;">
+                  0 примеров
+                </span>
+              </div>
+            </div>
+            <div class="gallery" id="galleryHard">
+              <div class="gallery-empty">
+                Система автоматически сохраняет кадры с низкой или нестабильной<br>
+                уверенностью детектора. Примеры появятся здесь.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Правая часть: управление дообучением -->
+    <div>
+
+      <!-- Запуск дообучения -->
+      <div class="panel" style="margin-bottom: 14px;">
+        <div class="ph">ДООБУЧЕНИЕ МОДЕЛИ</div>
+        <div class="pbody">
+          <div style="font-size: 13px; color: var(--mut); line-height: 1.6; margin-bottom: 14px;">
+            Система дообучается на подтверждённых примерах.
+            Нужно минимум <b style="color: var(--txt);">30</b> подтверждённых кадров.
+            После дообучения новая модель автоматически заменяет текущую,
+            если mAP вырос более чем на 2%.
+          </div>
+
+          <div class="progress-wrap" style="margin-bottom: 14px;">
+            <div class="progress-bar-bg">
+              <div class="progress-bar" id="readinessBar" style="width: 0%; background: linear-gradient(90deg, #6366f1, var(--acc));"></div>
+            </div>
+            <div class="progress-label">
+              <span>Готовность к дообучению</span>
+              <span id="readinessPct">0 / 30</span>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="btnTrain" onclick="startTraining()" disabled style="width: 100%; justify-content: center; margin-bottom: 10px;">
+            Запустить дообучение
+          </button>
+
+          <!-- Прогресс дообучения -->
+          <div class="train-progress" id="trainProgress">
+            <div style="font-size: 13px; font-weight: 600; color: var(--acc); margin-bottom: 6px;" id="trainStatusText">
+              Подготовка...
+            </div>
+            <div class="tp-bar-bg">
+              <div class="tp-bar" id="tpBar" style="width: 0%"></div>
+            </div>
+            <div class="tp-log" id="tpLog">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Статистика -->
+      <div class="panel" style="margin-bottom: 14px;">
+        <div class="ph">СТАТИСТИКА СБОРА</div>
+        <div class="stat-row">
+          <span class="sk">Собрано за сессию</span>
+          <span class="sv" id="statSession">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="sk">Трудных примеров</span>
+          <span class="sv" id="statHard">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="sk">Предложено системой</span>
+          <span class="sv" id="statProposed">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="sk">Ожидают оператора</span>
+          <span class="sv" id="statPending">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="sk">Подтверждено</span>
+          <span class="sv" id="statConfirmed" style="color: var(--grn)">0</span>
+        </div>
+      </div>
+
+      <!-- Версии моделей -->
+      <div class="panel">
+        <div class="ph">ВЕРСИИ МОДЕЛЕЙ</div>
+        <div class="version-list" id="versionList">
+          <div class="gallery-empty" style="padding: 20px; text-align: center; color: var(--mut); font-size: 13px;">
+            Дообученных версий пока нет
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ── вспомогательные функции ───────────────────────────── */
+
+const CLASSES = ['person', 'car', 'bus', 'truck', 'motorcycle', 'bicycle'];
+const CLASS_COLORS = {
+  person: '#00e676', car: '#4488ff', bus: '#ffaa44',
+  truck: '#ff6020', motorcycle: '#cc88ff', bicycle: '#00bb88', unknown: '#888'
+};
+
+let pendingItems = [];   // текущий список предложений
+let localState   = {};   // состояние подтверждений в UI (до сохранения)
+
+function cls_color(cls) {
+  return CLASS_COLORS[cls] || '#888';
+}
+
+function showNotif(text, type = 'info') {
+  const el = document.getElementById('notif');
+  el.textContent = text;
+  el.className = 'notif visible ' + type;
+  setTimeout(() => el.classList.remove('visible'), 5000);
+}
+
+/* ── вкладки ────────────────────────────────────────────── */
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['pending', 'hard'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+
+  if (name === 'hard') loadHardExamples();
+}
+
+/* ── загрузка данных ────────────────────────────────────── */
+
+async function loadStatus() {
+  try {
+    const d = await (await fetch('/api/retrain/status')).json();
+
+    // Метрики
+    document.getElementById('mPending').textContent   = d.pending_count   ?? 0;
+    document.getElementById('mConfirmed').textContent = d.confirmed_count  ?? 0;
+    document.getElementById('mHard').textContent      = d.hard_count       ?? 0;
+    document.getElementById('mVersion').textContent   = (d.current_version ?? '—').replace('yolov8n_', 'v');
+
+    // Прогресс разметки
+    const confirmed = d.confirmed_count ?? 0;
+    const pending   = d.pending_count   ?? 0;
+    const total     = confirmed + pending;
+    const pct       = total > 0 ? Math.round(confirmed / total * 100) : 0;
+    document.getElementById('progressBar').style.width  = pct + '%';
+    document.getElementById('progressText').textContent = `${confirmed} / ${total}`;
+    document.getElementById('progressPct').textContent  = pct + '%';
+
+    // Готовность к дообучению
+    const MIN = 30;
+    const readPct = Math.min(100, Math.round(confirmed / MIN * 100));
+    document.getElementById('readinessBar').style.width   = readPct + '%';
+    document.getElementById('readinessPct').textContent   = `${confirmed} / ${MIN}`;
+    document.getElementById('btnTrain').disabled          = confirmed < MIN || d.training;
+
+    // Статистика
+    document.getElementById('statSession').textContent   = d.collected_session ?? 0;
+    document.getElementById('statHard').textContent      = d.hard_count        ?? 0;
+    document.getElementById('statProposed').textContent  = d.proposed_session  ?? 0;
+    document.getElementById('statPending').textContent   = d.pending_count     ?? 0;
+    document.getElementById('statConfirmed').textContent = d.confirmed_count   ?? 0;
+
+    // Прогресс дообучения
+    if (d.training || d.status === 'done' || d.status === 'error') {
+      updateTrainProgress(d);
+    }
+
+  } catch (e) {
+    console.warn('Ошибка загрузки статуса:', e);
+  }
+}
+
+async function loadPending() {
+  try {
+    const d = await (await fetch('/api/retrain/pending')).json();
+    pendingItems = d.items || [];
+    document.getElementById('pendingCount').textContent = pendingItems.length + ' предложений';
+    renderPendingGallery(pendingItems);
+  } catch (e) {
+    console.warn('Ошибка загрузки предложений:', e);
+  }
+}
+
+async function loadVersions() {
+  try {
+    const d = await (await fetch('/api/retrain/versions')).json();
+    renderVersions(d.versions || []);
+  } catch (e) {
+    console.warn('Ошибка загрузки версий:', e);
+  }
+}
+
+async function loadHardExamples() {
+  try {
+    const d = await (await fetch('/api/retrain/hard_examples')).json();
+    const items = d.items || [];
+    document.getElementById('hardCount').textContent = items.length + ' примеров';
+    renderHardGallery(items);
+  } catch (e) {
+    console.warn('Ошибка загрузки трудных примеров:', e);
+  }
+}
+
+/* ── рендер галереи предложений ─────────────────────────── */
+
+function renderPendingGallery(items) {
+  const container = document.getElementById('galleryPending');
+  if (!items.length) {
+    container.innerHTML = `
+      <div class="gallery-empty">
+        Предложений пока нет.<br>
+        Запустите детекцию — система будет автоматически накапливать трудные примеры
+        и формировать предложения разметки на основе треков объектов.
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = items.map((item, idx) => {
+    const state = localState[item.filename] || 'pending';
+    const cls   = localState[item.filename + '_cls'] || item.suggested_class;
+    const color = cls_color(cls);
+    const confPct = Math.round((item.confidence || 0) * 100);
+
+    const badgeClass = {
+      pending: 'badge-pending', confirmed: 'badge-confirmed',
+      corrected: 'badge-corrected', skipped: 'badge-skipped'
+    }[state] || 'badge-pending';
+
+    const badgeText = {
+      pending: 'ожидает', confirmed: 'подтверждено',
+      corrected: 'исправлено', skipped: 'пропущено'
+    }[state] || 'ожидает';
+
+    const classOptions = CLASSES.map(c =>
+      `<option value="${c}" ${c === cls ? 'selected' : ''}>${c}</option>`
+    ).join('');
+
+    return `
+    <div class="card ${state}" id="card-${idx}">
+      <div class="card-img-wrap">
+        <img src="/api/retrain/image?file=${encodeURIComponent(item.filename)}&dir=pending"
+             alt="${item.suggested_class}" loading="lazy">
+        <div class="card-status-badge ${badgeClass}">${badgeText}</div>
+        <div class="conf-bar">
+          <div class="conf-fill" style="width: ${confPct}%"></div>
+        </div>
+        <div class="card-overlay">
+          <span style="font-family: var(--mono); font-size: 12px; color: #fff;">
+            conf: ${item.confidence ? item.confidence.toFixed(2) : '—'}<br>
+            track: ${item.track_id ?? '—'}<br>
+            frames: ${item.track_length ?? '—'}
+          </span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-cls" style="color: ${color}">${cls.toUpperCase()}</div>
+        <div class="card-meta">
+          conf ${confPct}% | консенс ${Math.round((item.consensus||0)*100)}%<br>
+          трек ${item.track_id ?? '—'} | ${item.track_length ?? 0} кадров
+        </div>
+        <select class="class-select" id="sel-${idx}" onchange="onClassChange(${idx}, '${item.filename}')">
+          ${classOptions}
+        </select>
+        <div class="card-actions" style="margin-top: 6px;">
+          <button class="btn btn-success btn-sm"
+            onclick="confirmItem(${idx}, '${item.filename}')"
+            title="Подтвердить предложенный класс">
+            Подтвердить
+          </button>
+          <button class="btn btn-outline btn-sm"
+            onclick="skipItem(${idx}, '${item.filename}')"
+            title="Пропустить этот пример">
+            Пропустить
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── рендер трудных примеров ────────────────────────────── */
+
+function renderHardGallery(items) {
+  const container = document.getElementById('galleryHard');
+  if (!items.length) {
+    container.innerHTML = `
+      <div class="gallery-empty">
+        Трудных примеров пока нет.<br>
+        Запустите детекцию — система сохраняет кадры с низкой уверенностью
+        и нестабильными треками автоматически.
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = items.map(item => {
+    const color = cls_color(item.suggested_class);
+    const confPct = Math.round((item.confidence || 0) * 100);
+    return `
+    <div class="card">
+      <div class="card-img-wrap">
+        <img src="/api/retrain/image?file=${encodeURIComponent(item.filename)}&dir=hard"
+             alt="${item.suggested_class}" loading="lazy">
+        <div class="card-status-badge badge-pending">${item.reason || 'hard'}</div>
+        <div class="conf-bar">
+          <div class="conf-fill" style="width: ${confPct}%"></div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-cls" style="color: ${color}">${(item.suggested_class || 'unknown').toUpperCase()}</div>
+        <div class="card-meta">
+          conf ${confPct}% | трек ${item.track_id ?? '—'}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── рендер версий моделей ──────────────────────────────── */
+
+function renderVersions(versions) {
+  const container = document.getElementById('versionList');
+  if (!versions.length) {
+    container.innerHTML = `
+      <div style="padding: 20px; text-align: center; color: var(--mut); font-size: 13px;">
+        Дообученных версий пока нет
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = versions.map((v, i) => {
+    const isActive = i === 0;
+    return `
+    <div class="version-item">
+      <div>
+        <div class="v-name">${v.version}</div>
+        <div class="v-meta">${v.created ? v.created.slice(0, 16) : '—'}</div>
+        <div class="v-meta" style="color: var(--acc);">
+          ${v.samples ? `${v.samples} примеров` : ''}
+          ${v.map50 != null ? ` | mAP ${(v.map50 * 100).toFixed(1)}%` : ''}
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+        <span class="v-badge ${isActive ? 'v-active' : 'v-old'}">
+          ${isActive ? 'АКТИВНА' : 'АРХИВ'}
+        </span>
+        ${!isActive ? `
+        <button class="btn btn-outline btn-sm"
+          onclick="applyVersion('${v.filename}')"
+          title="Переключиться на эту версию">
+          Применить
+        </button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── действия с карточками ──────────────────────────────── */
+
+function onClassChange(idx, filename) {
+  const sel = document.getElementById('sel-' + idx);
+  localState[filename + '_cls'] = sel.value;
+}
+
+async function confirmItem(idx, filename) {
+  const cls = localState[filename + '_cls'] ||
+    (pendingItems[idx] ? pendingItems[idx].suggested_class : 'unknown');
+
+  try {
+    const r = await fetch('/api/retrain/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, confirmed_class: cls }),
+    });
+    if (r.ok) {
+      const card = document.getElementById('card-' + idx);
+      if (card) {
+        card.className = 'card confirmed';
+        card.querySelector('.card-status-badge').className = 'card-status-badge badge-confirmed';
+        card.querySelector('.card-status-badge').textContent = 'подтверждено';
+      }
+      localState[filename] = 'confirmed';
+      await loadStatus();
+    }
+  } catch (e) {
+    showNotif('Ошибка подтверждения: ' + e, 'err');
+  }
+}
+
+async function skipItem(idx, filename) {
+  try {
+    const r = await fetch('/api/retrain/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+    if (r.ok) {
+      const card = document.getElementById('card-' + idx);
+      if (card) {
+        card.className = 'card skipped';
+        card.querySelector('.card-status-badge').className = 'card-status-badge badge-skipped';
+        card.querySelector('.card-status-badge').textContent = 'пропущено';
+      }
+      localState[filename] = 'skipped';
+      await loadStatus();
+    }
+  } catch (e) {
+    showNotif('Ошибка: ' + e, 'err');
+  }
+}
+
+async function confirmAll() {
+  try {
+    const r = await fetch('/api/retrain/confirm_all', { method: 'POST' });
+    const d = await r.json();
+    showNotif(`Подтверждено ${d.confirmed} предложений`, 'ok');
+    await loadPending();
+    await loadStatus();
+  } catch (e) {
+    showNotif('Ошибка: ' + e, 'err');
+  }
+}
+
+/* ── дообучение ─────────────────────────────────────────── */
+
+async function startTraining() {
+  const btn = document.getElementById('btnTrain');
+  btn.disabled = true;
+
+  try {
+    const r = await fetch('/api/retrain/start', { method: 'POST' });
+    const d = await r.json();
+
+    if (d.started) {
+      showNotif('Дообучение запущено. Прогресс обновляется автоматически.', 'info');
+      document.getElementById('trainProgress').classList.add('visible');
+    } else {
+      showNotif(d.reason || 'Не удалось запустить дообучение', 'err');
+      btn.disabled = false;
+    }
+  } catch (e) {
+    showNotif('Ошибка: ' + e, 'err');
+    btn.disabled = false;
+  }
+}
+
+function updateTrainProgress(d) {
+  const block = document.getElementById('trainProgress');
+  block.classList.add('visible');
+
+  const statusText = {
+    training:   'Идёт дообучение...',
+    validating: 'Валидация модели...',
+    done:       'Дообучение завершено',
+    error:      'Ошибка дообучения',
+    idle:       '',
+  }[d.status] || d.status;
+
+  document.getElementById('trainStatusText').textContent = statusText;
+  document.getElementById('tpBar').style.width  = (d.progress || 0) + '%';
+  document.getElementById('tpLog').textContent  = d.last_log || '—';
+
+  if (d.status === 'done') {
+    showNotif(d.last_log || 'Дообучение завершено', 'ok');
+    loadVersions();
+  } else if (d.status === 'error') {
+    showNotif(d.last_log || 'Ошибка дообучения', 'err');
+  }
+}
+
+async function applyVersion(filename) {
+  if (!confirm('Переключить модель на версию ' + filename + '?')) return;
+  try {
+    const r = await fetch('/api/retrain/apply_version', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showNotif('Модель переключена: ' + filename, 'ok');
+      await loadVersions();
+      await loadStatus();
+    } else {
+      showNotif(d.error || 'Ошибка переключения', 'err');
+    }
+  } catch (e) {
+    showNotif('Ошибка: ' + e, 'err');
+  }
+}
+
+/* ── автообновление ─────────────────────────────────────── */
+
+async function init() {
+  await loadStatus();
+  await loadPending();
+  await loadVersions();
+}
+
+// Статус обновляем каждые 3 секунды (для отображения прогресса дообучения)
+setInterval(loadStatus, 3000);
+
+init();
+</script>
+</body>
+</html>

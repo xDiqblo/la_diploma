@@ -1,13 +1,13 @@
 {
   "confidence_threshold": 0.5,
-  "frame_skip": 1,
+  "frame_skip": 9,
   "active_classes": [
     "car",
     "bus",
     "truck"
   ],
   "long_stay_seconds": 30,
-  "video_source": "test_video3.mp4",
+  "video_source": "0",
   "alert_confidence": 0.7,
   "alert_on_appearance": false,
   "global_long_stay_alerts": false,

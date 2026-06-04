@@ -7,215 +7,279 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#080b12;--surf:#0e1420;--card:#131a28;--bord:#1c2840;
-  --acc:#00c8ff;--acc2:#ff6020;--grn:#00e676;--red:#ff3d71;--ylw:#ffcc00;
-  --txt:#b8ccec;--mut:#3a4f70;
-  --font:'Rajdhani',sans-serif;--mono:'JetBrains Mono',monospace;
+:root {
+  --bg:   #080b12; --surf: #0e1420; --card: #131a28; --bord: #1c2840;
+  --acc:  #00c8ff; --acc2: #ff6020; --grn:  #00e676; --red:  #ff3d71;
+  --ylw:  #ffcc00; --pur:  #a78bfa;
+  --txt:  #b8ccec; --mut:  #3a4f70;
+  --font: 'Rajdhani', sans-serif; --mono: 'JetBrains Mono', monospace;
 }
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh;overflow-x:hidden}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--txt); font-family: var(--font); min-height: 100vh; overflow-x: hidden; }
 
-/* ── топ-бар ──────────────────────────────────────────── */
-.topbar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:0 20px;height:52px;
-  background:var(--surf);border-bottom:1px solid var(--bord);
-  position:sticky;top:0;z-index:100;
+/* ── топбар ──────────────────────────── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 52px;
+  background: var(--surf); border-bottom: 1px solid var(--bord);
+  position: sticky; top: 0; z-index: 100;
 }
-.logo{font-size:18px;font-weight:700;letter-spacing:3px;color:var(--acc)}
-.logo em{color:var(--txt);font-style:normal}
-.nav{display:flex;gap:4px}
-.nav a{
-  padding:6px 16px;border-radius:4px;font-size:14px;font-weight:600;
-  letter-spacing:1px;color:var(--mut);text-decoration:none;
-  border:1px solid transparent;transition:.2s
+.logo { font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--acc); }
+.logo em { color: var(--txt); font-style: normal; }
+.nav { display: flex; gap: 4px; }
+.nav a {
+  padding: 6px 16px; border-radius: 4px; font-size: 14px; font-weight: 600;
+  letter-spacing: 1px; color: var(--mut); text-decoration: none;
+  border: 1px solid transparent; transition: .2s;
 }
-.nav a:hover,.nav a.cur{color:var(--acc);border-color:var(--acc);background:rgba(0,200,255,.06)}
-.topright{display:flex;align-items:center;gap:16px}
-.clock{font-family:var(--mono);font-size:13px;color:var(--mut)}
-.rec-dot{width:8px;height:8px;border-radius:50%;background:var(--red);
-  box-shadow:0 0 8px var(--red);animation:blink 1.2s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.nav a:hover, .nav a.cur { color: var(--acc); border-color: var(--acc); background: rgba(0,200,255,.06); }
+.topright { display: flex; align-items: center; gap: 16px; }
+.clock { font-family: var(--mono); font-size: 13px; color: var(--mut); }
+.rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+  box-shadow: 0 0 8px var(--red); animation: blink 1.2s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-/* ── layout ───────────────────────────────────────────── */
-.layout{
-  display:grid;grid-template-columns:1fr 300px;
-  gap:14px;padding:14px 20px;
-  max-width:1700px;margin:0 auto;
+/* ── layout ──────────────────────────── */
+.layout {
+  display: grid; grid-template-columns: 1fr 300px;
+  gap: 14px; padding: 14px 20px;
+  max-width: 1700px; margin: 0 auto;
 }
-@media(max-width:960px){.layout{grid-template-columns:1fr}}
+@media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
 
-/* ── видео ────────────────────────────────────────────── */
-.video-wrap{
-  background:#000;border-radius:6px;overflow:hidden;
-  border:1px solid var(--bord);position:relative;
-  aspect-ratio:16/9;
+/* ── видео ───────────────────────────── */
+.video-wrap {
+  background: #000; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--bord); position: relative; aspect-ratio: 16/9;
 }
-.video-wrap img{width:100%;height:100%;object-fit:contain;display:block}
-.vid-badges{position:absolute;top:10px;left:10px;display:flex;gap:8px;z-index:3}
-.badge{
-  padding:3px 10px;border-radius:3px;font-size:11px;font-weight:700;
-  letter-spacing:1px;font-family:var(--mono)
-}
-.b-live{background:var(--red);color:#fff}
-.b-fps{background:rgba(0,0,0,.7);color:var(--acc);border:1px solid var(--acc)}
-.b-edit{background:var(--ylw);color:#000;display:none}
-.b-edit.on{display:inline-block}
+.video-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.vid-badges { position: absolute; top: 10px; left: 10px; display: flex; gap: 8px; z-index: 3; }
+.badge { padding: 3px 10px; border-radius: 3px; font-size: 11px; font-weight: 700;
+  letter-spacing: 1px; font-family: var(--mono); }
+.b-live { background: var(--red); color: #fff; }
+.b-fps  { background: rgba(0,0,0,.7); color: var(--acc); border: 1px solid var(--acc); }
+.b-src  { background: rgba(0,0,0,.7); color: var(--ylw); border: 1px solid rgba(255,204,0,.4);
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-conn { background: rgba(0,0,0,.7); border: 1px solid; font-size: 10px; }
+.b-conn.connected    { color: var(--grn); border-color: var(--grn); }
+.b-conn.connecting   { color: var(--ylw); border-color: var(--ylw); }
+.b-conn.reconnecting { color: var(--acc2); border-color: var(--acc2); }
+.b-conn.error, .b-conn.stopped { color: var(--red); border-color: var(--red); }
+.b-edit { background: var(--ylw); color: #000; display: none; }
+.b-edit.on { display: inline-block; }
 
-/* SVG-слой рисования зон поверх видео (виден только в режиме редактирования) */
-#zoneSvg{
-  position:absolute;inset:0;width:100%;height:100%;
-  z-index:2;display:none;cursor:crosshair
+/* SVG зоны */
+#zoneSvg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: 2; display: none; cursor: crosshair;
 }
-#zoneSvg.editing{display:block}
-.zpoly{fill-opacity:.18;stroke-width:2;vector-effect:non-scaling-stroke}
-.zpoint{fill:#fff;stroke:#000;stroke-width:1;vector-effect:non-scaling-stroke}
+#zoneSvg.editing { display: block; }
+.zpoly { fill-opacity: .18; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.zpoint { fill: #fff; stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; }
 
-/* ── кнопки управления ────────────────────────────────── */
-.ctrl{display:flex;gap:10px;margin-top:12px}
-.btn{
-  flex:1;padding:11px 0;border:none;border-radius:5px;
-  font-family:var(--font);font-size:15px;font-weight:700;
-  letter-spacing:1px;cursor:pointer;transition:.2s;
-  display:flex;align-items:center;justify-content:center;gap:8px
+/* ── источник видео ──────────────────── */
+.source-panel {
+  background: var(--card); border: 1px solid var(--bord); border-radius: 6px;
+  margin-top: 12px; overflow: hidden;
 }
-.btn-go{
-  background:linear-gradient(135deg,#00b04a,#00e676);color:#000;
-  box-shadow:0 0 18px rgba(0,230,118,.25)
+.source-tabs {
+  display: flex; border-bottom: 1px solid var(--bord);
 }
-.btn-go:hover{box-shadow:0 0 28px rgba(0,230,118,.45);transform:translateY(-1px)}
-.btn-stop{
-  background:linear-gradient(135deg,#b02020,#ff3d71);color:#fff;
-  box-shadow:0 0 18px rgba(255,61,113,.25)
+.stab {
+  flex: 1; padding: 9px 4px; text-align: center; font-size: 13px;
+  font-weight: 600; color: var(--mut); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: .2s; letter-spacing: .5px;
 }
-.btn-stop:hover{box-shadow:0 0 28px rgba(255,61,113,.45);transform:translateY(-1px)}
-.btn:disabled{opacity:.4;cursor:default;transform:none !important;box-shadow:none !important}
+.stab.active { color: var(--acc); border-bottom-color: var(--acc); }
+.stab:hover:not(.active) { color: var(--txt); }
+.stab-body { display: none; padding: 12px 14px; }
+.stab-body.active { display: block; }
 
-/* ── панель рисования зон ─────────────────────────────── */
-.zonebar{
-  display:flex;gap:8px;flex-wrap:wrap;align-items:center;
-  margin-top:10px;padding:10px 12px;
-  background:var(--card);border:1px solid var(--bord);border-radius:6px
+/* строка ввода + кнопка */
+.src-row { display: flex; gap: 8px; align-items: stretch; }
+.src-input {
+  flex: 1; padding: 8px 10px; border-radius: 4px;
+  border: 1px solid var(--bord); background: var(--surf);
+  color: var(--txt); font-family: var(--mono); font-size: 13px;
 }
-.zb-btn{
-  padding:7px 14px;border:1px solid var(--bord);border-radius:4px;
-  background:var(--surf);color:var(--txt);font-family:var(--font);
-  font-size:13px;font-weight:600;letter-spacing:.5px;cursor:pointer;transition:.2s
-}
-.zb-btn:hover{border-color:var(--acc);color:var(--acc)}
-.zb-btn.primary{background:var(--acc);color:#000;border-color:var(--acc)}
-.zb-btn.warn{border-color:var(--red);color:var(--red)}
-.zb-btn:disabled{opacity:.4;cursor:default}
-.zb-hint{font-size:12px;color:var(--mut);font-family:var(--mono)}
+.src-input:focus { outline: none; border-color: var(--acc); }
+.src-hint { font-size: 11px; color: var(--mut); margin-top: 5px; line-height: 1.4; }
 
-/* ── метрики ──────────────────────────────────────────── */
-.metrics{
-  display:grid;grid-template-columns:repeat(4,1fr);
-  gap:10px;margin-top:12px
+/* drag-drop зона */
+.dropzone {
+  border: 2px dashed var(--bord); border-radius: 6px; padding: 22px 14px;
+  text-align: center; cursor: pointer; transition: .2s; position: relative;
 }
-.mcard{
-  background:var(--card);border:1px solid var(--bord);border-radius:6px;
-  padding:14px 8px;text-align:center;transition:.25s
+.dropzone:hover, .dropzone.drag { border-color: var(--acc); background: rgba(0,200,255,.04); }
+.dropzone input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
 }
-.mcard:hover{border-color:var(--acc)}
-.mval{
-  font-size:30px;font-weight:700;font-family:var(--mono);
-  color:var(--acc);line-height:1
-}
-.mlbl{
-  font-size:10px;letter-spacing:1px;text-transform:uppercase;
-  color:var(--mut);margin-top:6px
-}
+.dz-icon { font-size: 26px; margin-bottom: 6px; }
+.dz-label { font-size: 14px; font-weight: 600; color: var(--txt); }
+.dz-hint  { font-size: 12px; color: var(--mut); margin-top: 4px; }
+.upload-bar-wrap { margin-top: 10px; display: none; }
+.upload-bar-bg { height: 6px; background: var(--bord); border-radius: 3px; overflow: hidden; }
+.upload-bar    { height: 100%; background: linear-gradient(90deg, #0090bb, var(--acc)); width: 0; transition: width .3s; }
+.upload-status { font-family: var(--mono); font-size: 12px; color: var(--mut); margin-top: 5px; }
 
-/* ── правая панель ────────────────────────────────────── */
-.sidebar{display:flex;flex-direction:column;gap:12px}
-.panel{background:var(--card);border:1px solid var(--bord);border-radius:6px;overflow:hidden}
-.ph{
-  padding:9px 14px;font-size:11px;font-weight:700;letter-spacing:2px;
-  text-transform:uppercase;color:var(--acc);border-bottom:1px solid var(--bord);
-  display:flex;justify-content:space-between;align-items:center
+/* камеры — список найденных устройств */
+.cam-list { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.cam-btn {
+  padding: 6px 14px; border: 1px solid var(--bord); border-radius: 4px;
+  background: var(--surf); color: var(--txt); font-family: var(--font);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: .2s;
 }
-.dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red)}
-.dot.on{background:var(--grn);box-shadow:0 0 6px var(--grn)}
+.cam-btn:hover { border-color: var(--acc); color: var(--acc); }
+.cam-btn.active { border-color: var(--acc); background: rgba(0,200,255,.1); color: var(--acc); }
 
-/* статус строки */
-.srow{
-  display:flex;justify-content:space-between;align-items:center;
-  padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.03);font-size:14px
+/* кнопки */
+.btn {
+  padding: 9px 18px; border: none; border-radius: 5px;
+  font-family: var(--font); font-size: 14px; font-weight: 700; letter-spacing: 1px;
+  cursor: pointer; transition: .2s; white-space: nowrap;
 }
-.srow:last-child{border-bottom:none}
-.sk{color:var(--mut)}
-.sv{font-family:var(--mono);font-weight:600;color:var(--txt)}
-.sv.on{color:var(--grn)}.sv.off{color:var(--red)}
+.btn:disabled { opacity: .4; cursor: default; }
+.btn-acc  { background: linear-gradient(135deg, #0090bb, var(--acc)); color: #000; }
+.btn-acc:not(:disabled):hover { box-shadow: 0 0 18px rgba(0,200,255,.4); transform: translateY(-1px); }
+.btn-grn  { background: linear-gradient(135deg, #00b04a, var(--grn)); color: #000; }
+.btn-grn:not(:disabled):hover { box-shadow: 0 0 18px rgba(0,230,118,.4); transform: translateY(-1px); }
+.btn-red  { background: linear-gradient(135deg, #b02020, var(--red)); color: #fff; }
+.btn-red:not(:disabled):hover { box-shadow: 0 0 18px rgba(255,61,113,.4); transform: translateY(-1px); }
+.btn-sm   { padding: 7px 14px; font-size: 13px; }
 
-/* список объектов */
-.objlist{padding:6px;max-height:200px;overflow-y:auto}
-.objlist::-webkit-scrollbar{width:3px}
-.objlist::-webkit-scrollbar-thumb{background:var(--bord)}
-.objitem{
-  display:flex;align-items:center;gap:8px;
-  padding:6px 8px;border-radius:3px;font-family:var(--mono);font-size:12px;
-  border-bottom:1px solid rgba(255,255,255,.03)
+/* ── панель управления зонами ────────── */
+.zonebar {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-top: 10px; padding: 10px 12px;
+  background: var(--card); border: 1px solid var(--bord); border-radius: 6px;
 }
-.objitem:last-child{border-bottom:none}
-.odot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.oname{color:#fff;font-weight:700;min-width:52px}
-.ometa{color:var(--mut);flex:1}
-.otime{color:var(--acc2)}
-.olong{color:var(--red) !important}
-.empty{text-align:center;color:var(--mut);padding:24px;font-size:13px}
+.zb-btn {
+  padding: 7px 14px; border: 1px solid var(--bord); border-radius: 4px;
+  background: var(--surf); color: var(--txt); font-family: var(--font);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: .2s;
+}
+.zb-btn:hover { border-color: var(--acc); color: var(--acc); }
+.zb-btn.primary { background: var(--acc); color: #000; border-color: var(--acc); }
+.zb-btn:disabled { opacity: .4; cursor: default; }
+.zb-hint { font-size: 12px; color: var(--mut); font-family: var(--mono); }
+.hide { display: none !important; }
 
-/* список зон (метрики + управление) */
-.zlist{padding:6px;max-height:280px;overflow-y:auto}
-.zitem{
-  border:1px solid var(--bord);border-radius:5px;
-  padding:8px 10px;margin-bottom:8px;background:var(--surf)
-}
-.zitem:last-child{margin-bottom:0}
-.zhead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.zswatch{width:12px;height:12px;border-radius:3px;flex-shrink:0}
-.zname{font-weight:700;color:#fff;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.zrule{font-size:10px;font-family:var(--mono);color:var(--acc);
-  border:1px solid var(--acc);border-radius:3px;padding:1px 6px}
-.zoff{opacity:.45}
-.zmetrics{display:flex;gap:10px;font-family:var(--mono);font-size:12px;margin-bottom:6px}
-.zm b{color:var(--ylw)}
-.zm span{color:var(--mut)}
-.zactions{display:flex;gap:6px}
-.zact{
-  flex:1;padding:4px 0;border:1px solid var(--bord);border-radius:3px;
-  background:none;color:var(--mut);font-family:var(--font);font-size:12px;
-  font-weight:600;cursor:pointer;transition:.2s
-}
-.zact:hover{border-color:var(--acc);color:var(--acc)}
-.zact.del:hover{border-color:var(--red);color:var(--red)}
+/* ── кнопки детекции ─────────────────── */
+.ctrl { display: flex; gap: 10px; margin-top: 12px; }
+.ctrl .btn { flex: 1; justify-content: center; }
 
-/* ── модалка настройки зоны ───────────────────────────── */
-.modal{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);
-  align-items:center;justify-content:center;padding:20px}
-.modal.open{display:flex}
-.mbox{background:var(--card);border:1px solid var(--bord);border-radius:8px;
-  max-width:440px;width:100%;max-height:90vh;overflow-y:auto;padding:22px;position:relative}
-.mbox h3{color:var(--acc);font-size:16px;letter-spacing:1px;margin-bottom:16px}
-.mf{margin-bottom:13px}
-.mf label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
-.mf input[type=text],.mf input[type=number],.mf select{
-  width:100%;padding:8px 10px;border-radius:4px;border:1px solid var(--bord);
-  background:var(--surf);color:var(--txt);font-family:var(--mono);font-size:13px}
-.mf input:focus,.mf select:focus{outline:none;border-color:var(--acc)}
-.mrow2{display:flex;gap:10px}
-.mrow2>div{flex:1}
-.mchecks{display:flex;flex-wrap:wrap;gap:8px}
-.mchk{display:flex;align-items:center;gap:5px;font-size:13px;font-family:var(--mono);
-  background:var(--surf);border:1px solid var(--bord);border-radius:4px;padding:5px 9px;cursor:pointer}
-.mtoggle{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600}
-.mactions{display:flex;gap:10px;margin-top:18px}
-.mbtn{flex:1;padding:10px 0;border:none;border-radius:5px;font-family:var(--font);
-  font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer}
-.mbtn-save{background:linear-gradient(135deg,#00b04a,#00e676);color:#000}
-.mbtn-cancel{background:var(--surf);color:var(--mut);border:1px solid var(--bord)}
-.hide{display:none !important}
+/* ── метрики ─────────────────────────── */
+.metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-top: 12px; }
+.mcard {
+  background: var(--card); border: 1px solid var(--bord); border-radius: 6px;
+  padding: 14px 8px; text-align: center; transition: .25s;
+}
+.mcard:hover { border-color: var(--acc); }
+.mval { font-size: 30px; font-weight: 700; font-family: var(--mono); color: var(--acc); line-height: 1; }
+.mlbl { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--mut); margin-top: 6px; }
+
+/* ── правая панель ───────────────────── */
+.sidebar { display: flex; flex-direction: column; gap: 12px; }
+.panel { background: var(--card); border: 1px solid var(--bord); border-radius: 6px; overflow: hidden; }
+.ph {
+  padding: 9px 14px; font-size: 11px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--acc); border-bottom: 1px solid var(--bord);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px var(--red); }
+.dot.on { background: var(--grn); box-shadow: 0 0 6px var(--grn); }
+
+.srow {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,.03); font-size: 14px;
+}
+.srow:last-child { border-bottom: none; }
+.sk { color: var(--mut); }
+.sv { font-family: var(--mono); font-weight: 600; color: var(--txt); }
+.sv.on { color: var(--grn); } .sv.off { color: var(--red); }
+
+.objlist { padding: 6px; max-height: 200px; overflow-y: auto; }
+.objlist::-webkit-scrollbar { width: 3px; }
+.objlist::-webkit-scrollbar-thumb { background: var(--bord); }
+.objitem {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 3px; font-family: var(--mono); font-size: 12px;
+  border-bottom: 1px solid rgba(255,255,255,.03);
+}
+.objitem:last-child { border-bottom: none; }
+.odot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.oname { color: #fff; font-weight: 700; min-width: 52px; }
+.ometa { color: var(--mut); flex: 1; }
+.otime { color: var(--acc2); }
+.olong { color: var(--red) !important; }
+.empty { text-align: center; color: var(--mut); padding: 24px; font-size: 13px; }
+
+/* зоны в сайдбаре */
+.zlist { padding: 6px; max-height: 280px; overflow-y: auto; }
+.zitem {
+  border: 1px solid var(--bord); border-radius: 5px;
+  padding: 8px 10px; margin-bottom: 8px; background: var(--surf);
+}
+.zitem:last-child { margin-bottom: 0; }
+.zhead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.zswatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.zname { font-weight: 700; color: #fff; font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zrule { font-size: 10px; font-family: var(--mono); color: var(--acc);
+  border: 1px solid var(--acc); border-radius: 3px; padding: 1px 6px; }
+.zoff { opacity: .45; }
+.zmetrics { display: flex; gap: 10px; font-family: var(--mono); font-size: 12px; margin-bottom: 6px; }
+.zm b { color: var(--ylw); } .zm span { color: var(--mut); }
+.zactions { display: flex; gap: 6px; }
+.zact {
+  flex: 1; padding: 4px 0; border: 1px solid var(--bord); border-radius: 3px;
+  background: none; color: var(--mut); font-family: var(--font); font-size: 12px;
+  font-weight: 600; cursor: pointer; transition: .2s;
+}
+.zact:hover { border-color: var(--acc); color: var(--acc); }
+.zact.del:hover { border-color: var(--red); color: var(--red); }
+
+/* ── модалка зоны ────────────────────── */
+.modal {
+  display: none; position: fixed; inset: 0; z-index: 300;
+  background: rgba(0,0,0,.85); align-items: center; justify-content: center; padding: 20px;
+}
+.modal.open { display: flex; }
+.mbox {
+  background: var(--card); border: 1px solid var(--bord); border-radius: 8px;
+  max-width: 440px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 22px; position: relative;
+}
+.mbox h3 { color: var(--acc); font-size: 16px; letter-spacing: 1px; margin-bottom: 16px; }
+.mf { margin-bottom: 13px; }
+.mf label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+.mf input[type=text], .mf input[type=number], .mf select {
+  width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--bord);
+  background: var(--surf); color: var(--txt); font-family: var(--mono); font-size: 13px;
+}
+.mf input:focus, .mf select:focus { outline: none; border-color: var(--acc); }
+.mrow2 { display: flex; gap: 10px; }
+.mrow2 > div { flex: 1; }
+.mchecks { display: flex; flex-wrap: wrap; gap: 8px; }
+.mchk { display: flex; align-items: center; gap: 5px; font-size: 13px; font-family: var(--mono);
+  background: var(--surf); border: 1px solid var(--bord); border-radius: 4px; padding: 5px 9px; cursor: pointer; }
+.mtoggle { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; }
+.mactions { display: flex; gap: 10px; margin-top: 18px; }
+.mbtn { flex: 1; padding: 10px 0; border: none; border-radius: 5px;
+  font-family: var(--font); font-size: 14px; font-weight: 700; letter-spacing: 1px; cursor: pointer; }
+.mbtn-save { background: linear-gradient(135deg,#00b04a,#00e676); color: #000; }
+.mbtn-cancel { background: var(--surf); color: var(--mut); border: 1px solid var(--bord); }
+
+/* ── toast уведомления ───────────────── */
+.toast-wrap { position: fixed; bottom: 20px; right: 20px; z-index: 500; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  padding: 10px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  max-width: 320px; border: 1px solid; animation: toast-in .25s ease;
+  opacity: 1; transition: opacity .3s;
+}
+.toast.ok   { background: rgba(0,230,118,.12); border-color: var(--grn); color: var(--grn); }
+.toast.err  { background: rgba(255,61,113,.12); border-color: var(--red); color: var(--red); }
+.toast.info { background: rgba(0,200,255,.12); border-color: var(--acc); color: var(--acc); }
+@keyframes toast-in { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
 </style>
 </head>
 <body>
@@ -226,6 +290,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
     <a href="/" class="cur">МОНИТОР</a>
     <a href="/events">СОБЫТИЯ</a>
     <a href="/settings">НАСТРОЙКИ</a>
+    <a href="/retrain">ДООБУЧЕНИЕ</a>
   </nav>
   <div class="topright">
     <div class="rec-dot"></div>
@@ -235,33 +300,86 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
 
 <div class="layout">
 
-  <!-- Видео + управление + метрики -->
+  <!-- Левая: видео + управление -->
   <div>
     <div class="video-wrap" id="videoWrap">
       <img id="feed" src="/video_feed" alt="Поток">
-      <!-- слой рисования зон -->
       <svg id="zoneSvg" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
       <div class="vid-badges">
         <span class="badge b-live">LIVE</span>
-        <span class="badge b-fps" id="fpsbadge">0 FPS</span>
-        <span class="badge b-edit" id="editBadge">✎ РЕДАКТИРОВАНИЕ ЗОН</span>
+        <span class="badge b-fps" id="fpsBadge">0 FPS</span>
+        <span class="badge b-conn" id="connBadge">—</span>
+        <span class="badge b-src" id="srcBadge"></span>
+        <span class="badge b-edit" id="editBadge">РЕДАКТИРОВАНИЕ ЗОН</span>
       </div>
     </div>
 
-    <!-- панель управления зонами -->
+    <!-- Панель рисования зон -->
     <div class="zonebar">
-      <button class="zb-btn" id="zEdit"   onclick="toggleEdit()">✎ Зоны</button>
-      <button class="zb-btn hide" id="zNew"    onclick="startDraw()">➕ Новая зона</button>
-      <button class="zb-btn hide" id="zFinish" onclick="finishDraw()" disabled>✓ Замкнуть</button>
-      <button class="zb-btn hide" id="zUndo"   onclick="undoPoint()" disabled>↶ Отменить точку</button>
+      <button class="zb-btn" id="zEdit" onclick="toggleEdit()">Зоны</button>
+      <button class="zb-btn hide" id="zNew"    onclick="startDraw()">+ Новая зона</button>
+      <button class="zb-btn hide" id="zFinish" onclick="finishDraw()" disabled>Замкнуть</button>
+      <button class="zb-btn hide" id="zUndo"   onclick="undoPoint()" disabled>Отменить точку</button>
       <span class="zb-hint" id="zHint"></span>
     </div>
 
+    <!-- Кнопки детекции -->
     <div class="ctrl">
-      <button class="btn btn-go"   id="bstart">▶&nbsp;ЗАПУСТИТЬ ДЕТЕКЦИЮ</button>
-      <button class="btn btn-stop" id="bstop" >■&nbsp;ОСТАНОВИТЬ</button>
+      <button class="btn btn-grn" id="bstart" onclick="startDetection()">ЗАПУСТИТЬ ДЕТЕКЦИЮ</button>
+      <button class="btn btn-red" id="bstop"  onclick="stopDetection()">ОСТАНОВИТЬ</button>
     </div>
 
+    <!-- Выбор источника видео -->
+    <div class="source-panel">
+      <div class="source-tabs">
+        <div class="stab active"  onclick="switchSrcTab('webcam')">Веб-камера</div>
+        <div class="stab"         onclick="switchSrcTab('file')">Видеофайл</div>
+        <div class="stab"         onclick="switchSrcTab('rtsp')">RTSP / IP-камера</div>
+      </div>
+
+      <!-- Веб-камера -->
+      <div class="stab-body active" id="src-webcam">
+        <div class="cam-list" id="camList">
+          <button class="cam-btn" onclick="applySource('0')">Камера 0</button>
+          <button class="cam-btn" onclick="applySource('1')">Камера 1</button>
+          <button class="cam-btn" onclick="applySource('2')">Камера 2</button>
+        </div>
+        <div class="src-hint">Нажмите на номер камеры — поток переключится мгновенно без перезапуска сервера.</div>
+      </div>
+
+      <!-- Видеофайл -->
+      <div class="stab-body" id="src-file">
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".mp4,.avi,.mov,.mkv,.webm,.ts,.m4v"
+                 onchange="handleFileSelect(this.files)">
+          <div class="dz-icon">&#128249;</div>
+          <div class="dz-label">Перетащите файл или нажмите для выбора</div>
+          <div class="dz-hint">MP4, AVI, MOV, MKV, WEBM — до 4 ГБ</div>
+        </div>
+        <div class="upload-bar-wrap" id="uploadBarWrap">
+          <div class="upload-bar-bg"><div class="upload-bar" id="uploadBar"></div></div>
+          <div class="upload-status" id="uploadStatus">Загрузка...</div>
+        </div>
+      </div>
+
+      <!-- RTSP -->
+      <div class="stab-body" id="src-rtsp">
+        <div class="src-row">
+          <input class="src-input" id="rtspInput" type="text"
+                 placeholder="rtsp://логин:пароль@192.168.1.64:554/stream"
+                 onkeydown="if(event.key==='Enter') applyRtsp()">
+          <button class="btn btn-acc btn-sm" onclick="applyRtsp()">Подключить</button>
+          <button class="btn btn-sm" style="background:var(--surf);border:1px solid var(--bord);color:var(--txt);"
+                  onclick="probeRtsp()">Проверить</button>
+        </div>
+        <div class="src-hint" id="rtspHint">
+          Примеры: <code>rtsp://admin:12345@192.168.1.100/stream1</code> &nbsp;|&nbsp;
+          <code>rtsp://192.168.1.100:554/live</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Метрики -->
     <div class="metrics">
       <div class="mcard"><div class="mval" id="mfps">0</div><div class="mlbl">FPS</div></div>
       <div class="mcard"><div class="mval" id="mcar"  style="color:#4488ff">0</div><div class="mlbl">Авто</div></div>
@@ -276,14 +394,13 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
     <div class="panel">
       <div class="ph">СИСТЕМА <div class="dot" id="sdot"></div></div>
       <div class="srow"><span class="sk">Детекция</span><span class="sv off" id="sstatus">ВЫКЛ</span></div>
-      <div class="srow"><span class="sk">Поток</span><span class="sv on">АКТИВЕН</span></div>
+      <div class="srow"><span class="sk">Поток</span><span class="sv" id="streamStatus">—</span></div>
       <div class="srow"><span class="sk">Аптайм</span><span class="sv" id="suptime">—</span></div>
     </div>
 
-    <!-- Зоны срабатывания: живые метрики + управление -->
     <div class="panel">
       <div class="ph">ЗОНЫ СРАБАТЫВАНИЯ</div>
-      <div class="zlist" id="zlist"><div class="empty">Зоны не заданы.<br>Нажмите «✎ Зоны».</div></div>
+      <div class="zlist" id="zlist"><div class="empty">Зоны не заданы.<br>Нажмите «Зоны».</div></div>
     </div>
 
     <div class="panel">
@@ -294,7 +411,10 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
   </div>
 </div>
 
-<!-- Модалка настройки правил зоны -->
+<!-- Тосты -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- Модалка зоны -->
 <div class="modal" id="zmodal">
   <div class="mbox">
     <h3 id="zmTitle">Настройка зоны</h3>
@@ -307,7 +427,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
       <select id="zmRule" onchange="zmRuleChanged()">
         <option value="presence">Присутствие — объект вошёл в зону</option>
         <option value="long_stay">Задержка — объект стоит в зоне дольше N сек</option>
-        <option value="count">Скопление — в зоне сразу ≥ N объектов</option>
+        <option value="count">Скопление — в зоне сразу не менее N объектов</option>
       </select>
     </div>
     <div class="mrow2">
@@ -353,81 +473,249 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:10
     </div>
     <div class="mactions">
       <button class="mbtn mbtn-cancel" onclick="closeZModal()">Отмена</button>
-      <button class="mbtn mbtn-save" onclick="saveZModal()">Сохранить зону</button>
+      <button class="mbtn mbtn-save" onclick="saveZModal()">Сохранить</button>
     </div>
   </div>
 </div>
 
 <script>
+/* ═══════════════════════════════════════════════════════
+   УТИЛИТЫ
+═══════════════════════════════════════════════════════ */
 const t0 = Date.now();
 const COLORS = {car:'#4488ff',bus:'#ffaa44',truck:'#ff6020',person:'#00e676',motorcycle:'#cc88ff',bicycle:'#00bb88'};
 const RULE_NAMES = {presence:'присутствие',long_stay:'задержка',count:'скопление'};
 
-// Часы
-setInterval(()=>{
-  const n=new Date();
-  document.getElementById('clock').textContent=n.toLocaleTimeString('ru-RU',{hour12:false});
-},1000);
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('ru-RU', {hour12: false});
+}, 1000);
 
-function fmt_uptime(){
-  const s=Math.floor((Date.now()-t0)/1000);
-  return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(v=>String(v).padStart(2,'0')).join(':');
+function fmt_uptime() {
+  const s = Math.floor((Date.now() - t0) / 1000);
+  return [Math.floor(s/3600), Math.floor(s%3600/60), s%60]
+    .map(v => String(v).padStart(2,'0')).join(':');
 }
 
-/* ════════════ ЗОНЫ ════════════ */
-let zones=[];            // список зон (как в settings.json)
-let liveZones=[];        // живые метрики по зонам (с сервера)
-let editing=false;       // режим редактирования
-let drawing=null;        // массив точек рисуемой зоны [{x,y}] (0..1)
-let editingZoneId=null;  // id редактируемой существующей зоны (или null = новая)
-let pendingPoints=null;  // точки только что нарисованной зоны (ждём настройки правил)
+function toast(text, type = 'info', ms = 3500) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = text;
+  document.getElementById('toastWrap').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 350); }, ms);
+}
 
-const svg=document.getElementById('zoneSvg');
+/* ═══════════════════════════════════════════════════════
+   ВЫБОР ИСТОЧНИКА ВИДЕО
+═══════════════════════════════════════════════════════ */
+let currentSrcTab = 'webcam';
 
-async function loadZones(){
-  try{
-    const d=await(await fetch('/api/zones')).json();
-    zones=d.zones||[];
+function switchSrcTab(name) {
+  currentSrcTab = name;
+  document.querySelectorAll('.stab').forEach((t, i) => {
+    t.classList.toggle('active', ['webcam','file','rtsp'][i] === name);
+  });
+  document.querySelectorAll('.stab-body').forEach(b => b.classList.remove('active'));
+  document.getElementById('src-' + name).classList.add('active');
+}
+
+async function applySource(src) {
+  try {
+    const r = await fetch('/api/stream/change', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source: src}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast('Источник переключён: ' + src, 'ok');
+      // Перезагружаем img-тег чтобы браузер сбросил старый MJPEG-поток
+      reloadFeed();
+    } else {
+      toast('Ошибка: ' + (d.error || 'неизвестно'), 'err');
+    }
+  } catch (e) {
+    toast('Ошибка подключения: ' + e, 'err');
+  }
+}
+
+function applyRtsp() {
+  const url = document.getElementById('rtspInput').value.trim();
+  if (!url) { toast('Введите RTSP-адрес', 'err'); return; }
+  applySource(url);
+}
+
+async function probeRtsp() {
+  const url = document.getElementById('rtspInput').value.trim();
+  if (!url) { toast('Введите адрес для проверки', 'err'); return; }
+  const hint = document.getElementById('rtspHint');
+  hint.textContent = 'Проверка соединения...';
+  hint.style.color = 'var(--ylw)';
+  try {
+    const r = await fetch('/api/stream/probe', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      hint.textContent = 'Доступен. FPS: ' + (d.fps ? d.fps.toFixed(1) : '?');
+      hint.style.color = 'var(--grn)';
+    } else {
+      hint.textContent = 'Недоступен: ' + (d.error || '');
+      hint.style.color = 'var(--red)';
+    }
+  } catch (e) {
+    hint.textContent = 'Ошибка проверки: ' + e;
+    hint.style.color = 'var(--red)';
+  }
+  setTimeout(() => {
+    hint.textContent = 'Примеры: rtsp://admin:12345@192.168.1.100/stream1';
+    hint.style.color = '';
+  }, 6000);
+}
+
+/* ── Загрузка видеофайла ──────────────── */
+const dropzone = document.getElementById('dropzone');
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('drag');
+  handleFileSelect(e.dataTransfer.files);
+});
+
+function handleFileSelect(files) {
+  if (!files || !files.length) return;
+  uploadFile(files[0]);
+}
+
+async function uploadFile(file) {
+  const wrap   = document.getElementById('uploadBarWrap');
+  const bar    = document.getElementById('uploadBar');
+  const status = document.getElementById('uploadStatus');
+
+  wrap.style.display = 'block';
+  bar.style.width    = '0%';
+  status.textContent = 'Загрузка ' + file.name + '...';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/stream/upload');
+
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) {
+        const pct = Math.round(e.loaded / e.total * 100);
+        bar.style.width    = pct + '%';
+        status.textContent = `Загрузка: ${pct}% (${(e.loaded/1024/1024).toFixed(1)} МБ)`;
+      }
+    };
+
+    xhr.onload = () => {
+      try {
+        const d = JSON.parse(xhr.responseText);
+        if (d.ok) {
+          bar.style.width    = '100%';
+          status.textContent = 'Готово: ' + d.filename + ' (' + d.size_mb + ' МБ)';
+          toast('Файл загружен и поток переключён', 'ok');
+          reloadFeed();
+          setTimeout(() => { wrap.style.display = 'none'; }, 4000);
+        } else {
+          status.textContent = 'Ошибка: ' + (d.error || xhr.status);
+          toast(d.error || 'Ошибка загрузки', 'err');
+        }
+      } catch (ex) {
+        status.textContent = 'Ошибка разбора ответа';
+        toast('Ошибка: ' + ex, 'err');
+      }
+      resolve();
+    };
+
+    xhr.onerror = () => {
+      status.textContent = 'Ошибка сети';
+      toast('Ошибка сети при загрузке', 'err');
+      resolve();
+    };
+
+    xhr.send(fd);
+  });
+}
+
+/* ── Перезагрузка MJPEG-потока ────────── */
+function reloadFeed() {
+  const img = document.getElementById('feed');
+  // Добавляем параметр с временной меткой чтобы браузер не использовал кеш
+  img.src = '/video_feed?t=' + Date.now();
+}
+
+/* ═══════════════════════════════════════════════════════
+   ДЕТЕКЦИЯ
+═══════════════════════════════════════════════════════ */
+async function startDetection() {
+  await fetch('/api/detection/start', {method:'POST'});
+  poll();
+}
+async function stopDetection() {
+  await fetch('/api/detection/stop', {method:'POST'});
+  poll();
+}
+
+/* ═══════════════════════════════════════════════════════
+   ЗОНЫ
+═══════════════════════════════════════════════════════ */
+let zones     = [];
+let liveZones = [];
+let editing   = false;
+let drawing   = null;
+let editingZoneId  = null;
+let pendingPoints  = null;
+
+const svg = document.getElementById('zoneSvg');
+
+async function loadZones() {
+  try {
+    const d = await (await fetch('/api/zones')).json();
+    zones = d.zones || [];
     renderZones();
     renderZoneList();
-  }catch(e){console.warn(e)}
+  } catch(e) { console.warn(e); }
 }
 
-async function saveZones(){
-  await fetch('/api/zones',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({zones})
+async function saveZones() {
+  await fetch('/api/zones', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({zones}),
   });
 }
 
-// — отрисовка SVG (полигоны существующих зон + текущий рисунок) —
-function renderZones(){
-  let html='';
-  zones.forEach(z=>{
-    if(!z.points||z.points.length<2) return;
-    const pts=z.points.map(p=>p[0]+','+p[1]).join(' ');
-    const op=z.enabled?'':'stroke-dasharray="0.02 0.01"';
-    html+=`<polygon class="zpoly" points="${pts}" style="fill:${z.color};stroke:${z.color}" ${op}></polygon>`;
+function renderZones() {
+  let html = '';
+  zones.forEach(z => {
+    if (!z.points || z.points.length < 2) return;
+    const pts = z.points.map(p => p[0]+','+p[1]).join(' ');
+    const op  = z.enabled ? '' : 'stroke-dasharray="0.02 0.01"';
+    html += `<polygon class="zpoly" points="${pts}" style="fill:${z.color};stroke:${z.color}" ${op}></polygon>`;
   });
-  if(drawing&&drawing.length){
-    const pts=drawing.map(p=>p.x+','+p.y).join(' ');
-    html+=`<polyline points="${pts}" style="fill:none;stroke:#ffcc00;stroke-width:2;vector-effect:non-scaling-stroke;stroke-dasharray:0.01 0.006"></polyline>`;
-    drawing.forEach(p=>{html+=`<circle class="zpoint" cx="${p.x}" cy="${p.y}" r="0.008"></circle>`});
+  if (drawing && drawing.length) {
+    const pts = drawing.map(p => p.x+','+p.y).join(' ');
+    html += `<polyline points="${pts}" style="fill:none;stroke:#ffcc00;stroke-width:2;vector-effect:non-scaling-stroke;stroke-dasharray:0.01 0.006"></polyline>`;
+    drawing.forEach(p => { html += `<circle class="zpoint" cx="${p.x}" cy="${p.y}" r="0.008"></circle>`; });
   }
-  svg.innerHTML=html;
+  svg.innerHTML = html;
 }
 
-// — список зон в сайдбаре (метрики + кнопки) —
-function renderZoneList(){
-  const el=document.getElementById('zlist');
-  if(!zones.length){
-    el.innerHTML='<div class="empty">Зоны не заданы.<br>Нажмите «✎ Зоны».</div>';
+function renderZoneList() {
+  const el = document.getElementById('zlist');
+  if (!zones.length) {
+    el.innerHTML = '<div class="empty">Зоны не заданы.<br>Нажмите «Зоны».</div>';
     return;
   }
-  const liveMap={}; liveZones.forEach(z=>liveMap[z.id]=z);
-  el.innerHTML=zones.map(z=>{
-    const lv=liveMap[z.id]||{count:0,total_events:0,visitors:0};
-    return `<div class="zitem ${z.enabled?'':'zoff'}">
+  const liveMap = {}; liveZones.forEach(z => liveMap[z.id] = z);
+  el.innerHTML = zones.map(z => {
+    const lv = liveMap[z.id] || {count:0, total_events:0, visitors:0};
+    return `<div class="zitem ${z.enabled ? '' : 'zoff'}">
       <div class="zhead">
         <span class="zswatch" style="background:${z.color}"></span>
         <span class="zname">${z.name}</span>
@@ -439,179 +727,219 @@ function renderZoneList(){
         <span class="zm"><span>визитов:</span> <b>${lv.visitors}</b></span>
       </div>
       <div class="zactions">
-        <button class="zact" onclick="editZone('${z.id}')">✎ Правила</button>
-        <button class="zact" onclick="toggleZone('${z.id}')">${z.enabled?'⏸ Выкл':'▶ Вкл'}</button>
-        <button class="zact del" onclick="deleteZone('${z.id}')">🗑</button>
+        <button class="zact" onclick="editZone('${z.id}')">Правила</button>
+        <button class="zact" onclick="toggleZone('${z.id}')">${z.enabled ? 'Выкл' : 'Вкл'}</button>
+        <button class="zact del" onclick="deleteZone('${z.id}')">Удалить</button>
       </div>
     </div>`;
   }).join('');
 }
 
-// — режим редактирования —
-function toggleEdit(){
-  editing=!editing;
-  svg.classList.toggle('editing',editing);
-  document.getElementById('editBadge').classList.toggle('on',editing);
-  document.getElementById('zEdit').classList.toggle('primary',editing);
-  document.getElementById('zEdit').textContent=editing?'✓ Готово':'✎ Зоны';
-  ['zNew','zFinish','zUndo'].forEach(id=>document.getElementById(id).classList.toggle('hide',!editing));
+function toggleEdit() {
+  editing = !editing;
+  svg.classList.toggle('editing', editing);
+  document.getElementById('editBadge').classList.toggle('on', editing);
+  document.getElementById('zEdit').classList.toggle('primary', editing);
+  document.getElementById('zEdit').textContent = editing ? 'Готово' : 'Зоны';
+  ['zNew','zFinish','zUndo'].forEach(id =>
+    document.getElementById(id).classList.toggle('hide', !editing));
   cancelDraw();
-  setHint(editing?'Нажмите «Новая зона», затем кликайте по видео, отмечая углы.':'');
+  setHint(editing ? 'Нажмите «+ Новая зона», затем кликайте по видео.' : '');
 }
-function setHint(t){document.getElementById('zHint').textContent=t}
+function setHint(t) { document.getElementById('zHint').textContent = t; }
 
-function startDraw(){
-  drawing=[];
-  document.getElementById('zFinish').disabled=true;
-  document.getElementById('zUndo').disabled=true;
-  setHint('Кликайте по видео, чтобы поставить углы зоны (минимум 3).');
+function startDraw() {
+  drawing = [];
+  document.getElementById('zFinish').disabled = true;
+  document.getElementById('zUndo').disabled   = true;
+  setHint('Кликайте по видео, отмечая углы зоны (минимум 3).');
   renderZones();
 }
-function cancelDraw(){drawing=null;renderZones()}
+function cancelDraw() { drawing = null; renderZones(); }
 
-function undoPoint(){
-  if(!drawing||!drawing.length) return;
+function undoPoint() {
+  if (!drawing || !drawing.length) return;
   drawing.pop();
-  document.getElementById('zFinish').disabled=drawing.length<3;
-  document.getElementById('zUndo').disabled=drawing.length===0;
+  document.getElementById('zFinish').disabled = drawing.length < 3;
+  document.getElementById('zUndo').disabled   = drawing.length === 0;
   renderZones();
 }
 
-// клик по видео в режиме рисования = добавить угол
-svg.addEventListener('click',e=>{
-  if(!editing||!drawing) return;
-  const r=svg.getBoundingClientRect();
-  const x=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));
-  const y=Math.min(1,Math.max(0,(e.clientY-r.top)/r.height));
-  drawing.push({x:+x.toFixed(4),y:+y.toFixed(4)});
-  document.getElementById('zFinish').disabled=drawing.length<3;
-  document.getElementById('zUndo').disabled=false;
+svg.addEventListener('click', e => {
+  if (!editing || !drawing) return;
+  const r = svg.getBoundingClientRect();
+  const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  const y = Math.min(1, Math.max(0, (e.clientY - r.top)  / r.height));
+  drawing.push({x: +x.toFixed(4), y: +y.toFixed(4)});
+  document.getElementById('zFinish').disabled = drawing.length < 3;
+  document.getElementById('zUndo').disabled   = false;
   renderZones();
 });
 
-function finishDraw(){
-  if(!drawing||drawing.length<3){alert('Нужно минимум 3 точки');return}
-  pendingPoints=drawing.map(p=>[p.x,p.y]);
-  editingZoneId=null;
+function finishDraw() {
+  if (!drawing || drawing.length < 3) { alert('Нужно минимум 3 точки'); return; }
+  pendingPoints  = drawing.map(p => [p.x, p.y]);
+  editingZoneId  = null;
   openZModal({name:'',rule:'presence',min_confidence:0.5,dwell_seconds:20,
               max_count:3,cooldown_seconds:30,color:'#00c8ff',classes:[],
-              save_media:true,enabled:true},'Новая зона');
+              save_media:true,enabled:true}, 'Новая зона');
 }
 
-/* ── модалка правил зоны ── */
-function openZModal(z,title){
-  document.getElementById('zmTitle').textContent=title;
-  document.getElementById('zmName').value=z.name||'';
-  document.getElementById('zmRule').value=z.rule||'presence';
-  document.getElementById('zmDwell').value=z.dwell_seconds??20;
-  document.getElementById('zmCount').value=z.max_count??3;
-  document.getElementById('zmConf').value=z.min_confidence??0.5;
-  document.getElementById('zmCooldown').value=z.cooldown_seconds??30;
-  document.getElementById('zmColor').value=z.color||'#00c8ff';
-  document.getElementById('zmSaveMedia').checked=z.save_media!==false;
-  document.getElementById('zmEnabled').checked=z.enabled!==false;
-  const cls=new Set(z.classes||[]);
-  document.querySelectorAll('#zmClasses input').forEach(cb=>cb.checked=cls.has(cb.value));
+function openZModal(z, title) {
+  document.getElementById('zmTitle').textContent = title;
+  document.getElementById('zmName').value    = z.name || '';
+  document.getElementById('zmRule').value    = z.rule || 'presence';
+  document.getElementById('zmDwell').value   = z.dwell_seconds ?? 20;
+  document.getElementById('zmCount').value   = z.max_count ?? 3;
+  document.getElementById('zmConf').value    = z.min_confidence ?? 0.5;
+  document.getElementById('zmCooldown').value = z.cooldown_seconds ?? 30;
+  document.getElementById('zmColor').value   = z.color || '#00c8ff';
+  document.getElementById('zmSaveMedia').checked = z.save_media !== false;
+  document.getElementById('zmEnabled').checked   = z.enabled !== false;
+  const cls = new Set(z.classes || []);
+  document.querySelectorAll('#zmClasses input').forEach(cb => cb.checked = cls.has(cb.value));
   zmRuleChanged();
   document.getElementById('zmodal').classList.add('open');
 }
-function closeZModal(){
+function closeZModal() {
   document.getElementById('zmodal').classList.remove('open');
-  pendingPoints=null;editingZoneId=null;cancelDraw();
+  pendingPoints = null; editingZoneId = null; cancelDraw();
 }
-function zmRuleChanged(){
-  const r=document.getElementById('zmRule').value;
-  document.querySelector('.zm-dwell').style.display=(r==='long_stay')?'block':'none';
-  document.querySelector('.zm-count').style.display=(r==='count')?'block':'none';
+function zmRuleChanged() {
+  const r = document.getElementById('zmRule').value;
+  document.querySelector('.zm-dwell').style.display = (r === 'long_stay') ? 'block' : 'none';
+  document.querySelector('.zm-count').style.display = (r === 'count')     ? 'block' : 'none';
 }
-function saveZModal(){
-  const name=document.getElementById('zmName').value.trim()||'Зона';
-  const classes=[...document.querySelectorAll('#zmClasses input:checked')].map(cb=>cb.value);
-  const data={
+function saveZModal() {
+  const name    = document.getElementById('zmName').value.trim() || 'Зона';
+  const classes = [...document.querySelectorAll('#zmClasses input:checked')].map(cb => cb.value);
+  const data = {
     name,
-    rule:           document.getElementById('zmRule').value,
-    dwell_seconds:  parseInt(document.getElementById('zmDwell').value)||20,
-    max_count:      parseInt(document.getElementById('zmCount').value)||3,
-    min_confidence: parseFloat(document.getElementById('zmConf').value)||0.5,
-    cooldown_seconds:parseInt(document.getElementById('zmCooldown').value)||0,
-    color:          document.getElementById('zmColor').value,
+    rule:            document.getElementById('zmRule').value,
+    dwell_seconds:   parseInt(document.getElementById('zmDwell').value)    || 20,
+    max_count:       parseInt(document.getElementById('zmCount').value)    || 3,
+    min_confidence:  parseFloat(document.getElementById('zmConf').value)   || 0.5,
+    cooldown_seconds:parseInt(document.getElementById('zmCooldown').value) || 0,
+    color:           document.getElementById('zmColor').value,
     classes,
-    save_media:     document.getElementById('zmSaveMedia').checked,
-    enabled:        document.getElementById('zmEnabled').checked,
+    save_media:      document.getElementById('zmSaveMedia').checked,
+    enabled:         document.getElementById('zmEnabled').checked,
   };
-  if(editingZoneId){
-    const z=zones.find(z=>z.id===editingZoneId);
-    Object.assign(z,data);                 // обновляем правила, точки не трогаем
-  }else{
-    zones.push({id:'z'+Date.now(),points:pendingPoints,...data});
+  if (editingZoneId) {
+    const z = zones.find(z => z.id === editingZoneId);
+    Object.assign(z, data);
+  } else {
+    zones.push({id: 'z' + Date.now(), points: pendingPoints, ...data});
   }
-  saveZones();
-  closeZModal();
-  renderZones();renderZoneList();
+  saveZones(); closeZModal(); renderZones(); renderZoneList();
 }
 
-function editZone(id){
-  const z=zones.find(z=>z.id===id); if(!z) return;
-  editingZoneId=id;pendingPoints=null;
-  openZModal(z,'Правила зоны: '+z.name);
+function editZone(id) {
+  const z = zones.find(z => z.id === id); if (!z) return;
+  editingZoneId = id; pendingPoints = null;
+  openZModal(z, 'Правила зоны: ' + z.name);
 }
-function toggleZone(id){
-  const z=zones.find(z=>z.id===id); if(!z) return;
-  z.enabled=!z.enabled;saveZones();renderZones();renderZoneList();
+function toggleZone(id) {
+  const z = zones.find(z => z.id === id); if (!z) return;
+  z.enabled = !z.enabled; saveZones(); renderZones(); renderZoneList();
 }
-function deleteZone(id){
-  if(!confirm('Удалить зону?')) return;
-  zones=zones.filter(z=>z.id!==id);saveZones();renderZones();renderZoneList();
+function deleteZone(id) {
+  if (!confirm('Удалить зону?')) return;
+  zones = zones.filter(z => z.id !== id); saveZones(); renderZones(); renderZoneList();
 }
 
-/* ════════════ ОПРОС СТАТУСА ════════════ */
-async function poll(){
-  try{
-    const d=await(await fetch('/api/detections')).json();
-    const fps=d.fps||0;
-    document.getElementById('mfps').textContent=fps;
-    document.getElementById('fpsbadge').textContent=fps+' FPS';
-    document.getElementById('suptime').textContent=fmt_uptime();
+/* ═══════════════════════════════════════════════════════
+   ОПРОС СОСТОЯНИЯ
+═══════════════════════════════════════════════════════ */
+const STATUS_LABELS = {
+  connected:    'Подключено',
+  connecting:   'Подключение...',
+  reconnecting: 'Переподключение...',
+  stopped:      'Остановлено',
+  error:        'Ошибка',
+};
 
-    const on=d.detection_enabled;
-    document.getElementById('sdot').className='dot'+(on?' on':'');
-    const ss=document.getElementById('sstatus');
-    ss.textContent=on?'АКТИВНА':'ВЫКЛ';
-    ss.className='sv '+(on?'on':'off');
+async function poll() {
+  try {
+    const [det, stream] = await Promise.all([
+      fetch('/api/detections').then(r => r.json()),
+      fetch('/api/stream/status').then(r => r.json()),
+    ]);
 
-    const cc=d.class_counts||{};
-    document.getElementById('mcar').textContent=cc.car||0;
-    document.getElementById('mpers').textContent=cc.person||0;
-    document.getElementById('mother').textContent=(cc.bus||0)+(cc.truck||0)+(cc.motorcycle||0);
+    // FPS и метрики
+    const fps = det.fps || 0;
+    document.getElementById('mfps').textContent     = fps;
+    document.getElementById('fpsBadge').textContent = fps + ' FPS';
+    document.getElementById('suptime').textContent  = fmt_uptime();
 
-    // живые метрики зон
-    liveZones=d.zones||[];
+    // Статус детекции
+    const on = det.detection_enabled;
+    document.getElementById('sdot').className    = 'dot' + (on ? ' on' : '');
+    const ss = document.getElementById('sstatus');
+    ss.textContent = on ? 'АКТИВНА' : 'ВЫКЛ';
+    ss.className   = 'sv ' + (on ? 'on' : 'off');
+
+    // Счётчики объектов
+    const cc = det.class_counts || {};
+    document.getElementById('mcar').textContent   = cc.car   || 0;
+    document.getElementById('mpers').textContent  = cc.person || 0;
+    document.getElementById('mother').textContent = (cc.bus||0) + (cc.truck||0) + (cc.motorcycle||0);
+
+    // Статус потока
+    const stLabel = STATUS_LABELS[stream.status] || stream.status;
+    const stEl    = document.getElementById('streamStatus');
+    stEl.textContent = stLabel;
+    stEl.className   = 'sv ' + (stream.status === 'connected' ? 'on' : 'off');
+
+    const connBadge = document.getElementById('connBadge');
+    connBadge.textContent = stLabel;
+    connBadge.className   = 'badge b-conn ' + (stream.status || 'stopped');
+
+    // Источник (сокращаем длинные пути)
+    const srcBadge = document.getElementById('srcBadge');
+    let srcShort   = stream.source || '';
+    if (srcShort.length > 38) srcShort = '...' + srcShort.slice(-35);
+    srcBadge.textContent = srcShort;
+    srcBadge.title       = stream.source || '';
+
+    // Живые метрики зон
+    liveZones = det.zones || [];
     renderZoneList();
 
-    const objs=d.objects||[];
-    const ol=document.getElementById('objlist');
-    ol.innerHTML=objs.length?objs.map(o=>{
-      const c=COLORS[o.class]||'#aaa';
-      const lg=o.long_stay?'olong':'';
+    // Список объектов
+    const objs = det.objects || [];
+    const ol   = document.getElementById('objlist');
+    ol.innerHTML = objs.length ? objs.map(o => {
+      const c  = COLORS[o.class] || '#aaa';
+      const lg = o.long_stay ? 'olong' : '';
       return `<div class="objitem">
         <div class="odot" style="background:${c};box-shadow:0 0 5px ${c}"></div>
         <span class="oname">${o.class.toUpperCase()}</span>
-        <span class="ometa">ID:${o.track_id??'—'}&nbsp;${o.confidence}</span>
+        <span class="ometa">ID:${o.track_id ?? '—'} ${o.confidence}</span>
         <span class="otime ${lg}">${o.time}s</span>
       </div>`;
-    }).join(''):'<div class="empty">Нет объектов</div>';
-  }catch(e){console.warn(e)}
+    }).join('') : '<div class="empty">Нет объектов</div>';
+
+  } catch(e) { console.warn('poll error', e); }
 }
 
-document.getElementById('bstart').onclick=async()=>{
-  await fetch('/api/detection/start',{method:'POST'}); poll();
-};
-document.getElementById('bstop').onclick=async()=>{
-  await fetch('/api/detection/stop',{method:'POST'}); poll();
-};
-
+/* ═══════════════════════════════════════════════════════
+   ИНИЦИАЛИЗАЦИЯ
+═══════════════════════════════════════════════════════ */
 loadZones();
-setInterval(poll,600); poll();
+setInterval(poll, 800);
+poll();
+
+// Подставляем текущий источник в поле RTSP при загрузке страницы
+fetch('/api/stream/status').then(r => r.json()).then(d => {
+  const src = d.source || '';
+  if (src.toLowerCase().startsWith('rtsp://') || src.toLowerCase().startsWith('rtmp://')) {
+    document.getElementById('rtspInput').value = src;
+    switchSrcTab('rtsp');
+  } else {
+    try { parseInt(src); switchSrcTab('webcam'); } catch(_) { switchSrcTab('file'); }
+  }
+}).catch(() => {});
 </script>
 </body>
 </html>
