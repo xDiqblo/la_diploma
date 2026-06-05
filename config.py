@@ -47,7 +47,26 @@ DEFAULT_SETTINGS = {
     "cloud_sync_enabled": False,
     "cloud_url": "http://localhost:8001",
     "cloud_api_key": "secret-key-123",
+    # ── отправка тревог по email (см. core/email_notify.py и core/rules.py) ────
+    # Хранится здесь, чтобы меняться без перезапуска сервера. Пароль приложения
+    # SMTP в финальной поставке заменён на заглушку.
+    "email_enabled": False,
+    "email_smtp_host": "smtp.gmail.com",
+    "email_smtp_port": 587,
+    "email_use_tls": True,
+    "email_login": "",
+    "email_password": "",
+    "email_from": "",
+    "email_to": [],                   # список адресов получателей
+    "alert_send_mode": "immediate",   # immediate | after_n | delay
+    "alert_send_after_n": 2,          # для after_n: сколько срабатываний накопить
+    "alert_send_delay": 5,            # для delay: задержка в секундах
+    "alert_attach_screenshot": True,  # прикладывать скриншот к письму
 }
+
+# Кастомные классы, правила тревог и зоны вынесены в отдельные файлы
+# (core/classes.py, core/rules.py, core/zone_store.py), потому что у них своя
+# логика импорта/экспорта и они меняются независимо от общих настроек.
 
 _lock = threading.Lock()
 

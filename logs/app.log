@@ -227,3 +227,107 @@ ConnectionResetError: [WinError 10054] Удаленный хост принуд�
 2026-06-05 00:59:51,688 [INFO] __main__: Событие: Человек без автомобиля | зона=None | person ID:2 conf:0.9
 2026-06-05 00:59:51,788 [INFO] core.incremental_trainer: Предложена разметка: 20260605_005951_7_10.00_person.jpg (консенсус 100%)
 2026-06-05 00:59:53,206 [INFO] core.rtsp_manager: RTSPManager: источник изменён -> 0
+2026-06-05 01:46:11,981 [INFO] core.rtsp_manager: RTSPManager: подключение к [0]
+2026-06-05 01:46:11,981 [INFO] core.rtsp_manager: RTSPManager: запущен [0]
+2026-06-05 01:46:11,984 [INFO] __main__: Поток захвата запущен
+2026-06-05 01:46:11,984 [INFO] __main__: Сервер запущен
+2026-06-05 01:46:17,066 [INFO] core.rtsp_manager: RTSPManager: подключено FPS=30.0 [0]
+2026-06-05 01:46:23,106 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 01:46:31,992 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 01:46:32,848 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 01:46:37,348 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 01:46:39,290 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 01:46:59,303 [INFO] __main__: Файл загружен: data/uploads\upload_1780598819.mp4 (11.3 МБ)
+2026-06-05 01:46:59,796 [INFO] core.rtsp_manager: RTSPManager: источник изменён -> data/uploads\upload_1780598819.mp4
+2026-06-05 01:47:09,389 [INFO] core.rtsp_manager: RTSPManager: подключение к [data/uploads\upload_1780598819.mp4]
+2026-06-05 01:47:09,800 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 01:47:09,849 [INFO] core.rtsp_manager: RTSPManager: подключено FPS=30.0 [data/uploads\upload_1780598819.mp4]
+2026-06-05 01:47:11,393 [INFO] core.incremental_trainer: Предложена разметка: 20260605_014711_5_1.00_person.jpg (консенсус 100%)
+2026-06-05 01:47:16,006 [INFO] core.incremental_trainer: Предложена разметка: 20260605_014715_5_1.00_person.jpg (консенсус 100%)
+2026-06-05 01:47:18,194 [INFO] core.incremental_trainer: Предложена разметка: 20260605_014718_7_1.00_person.jpg (консенсус 100%)
+2026-06-05 01:47:18,626 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 01:47:19,827 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 01:47:23,662 [ERROR] asyncio: Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\nkoro\AppData\Local\Programs\Python\Python310\lib\asyncio\events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nkoro\AppData\Local\Programs\Python\Python310\lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] Удаленный хост принудительно разорвал существующее подключение
+2026-06-05 01:47:52,412 [ERROR] asyncio: Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\nkoro\AppData\Local\Programs\Python\Python310\lib\asyncio\events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nkoro\AppData\Local\Programs\Python\Python310\lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] Удаленный хост принудительно разорвал существующее подключение
+2026-06-05 10:27:37,412 [INFO] core.rtsp_manager: RTSPManager: подключение к [0]
+2026-06-05 10:27:37,412 [INFO] core.rtsp_manager: RTSPManager: запущен [0]
+2026-06-05 10:27:37,415 [INFO] __main__: Поток захвата запущен
+2026-06-05 10:27:37,416 [INFO] __main__: Сервер запущен
+2026-06-05 10:27:42,418 [INFO] core.rtsp_manager: RTSPManager: подключено FPS=30.0 [0] (пейсинг=выкл)
+2026-06-05 10:27:48,163 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 10:27:52,735 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 10:27:53,740 [INFO] core.anomaly_detector: AnomalyDetector: состояние сброшено
+2026-06-05 10:27:59,241 [INFO] __main__: Файл загружен: data/uploads\upload_1780630079.mp4 (11.3 МБ)
+2026-06-05 10:27:59,562 [INFO] core.rtsp_manager: RTSPManager: источник изменён -> data/uploads\upload_1780630079.mp4
+2026-06-05 10:28:09,288 [INFO] core.rtsp_manager: RTSPManager: подключение к [data/uploads\upload_1780630079.mp4]
+2026-06-05 10:28:09,481 [INFO] core.rtsp_manager: RTSPManager: подключено FPS=30.0 [data/uploads\upload_1780630079.mp4] (пейсинг=вкл)
+2026-06-05 10:28:34,574 [INFO] core.rtsp_manager: RTSPManager: источник изменён -> 1
+2026-06-05 10:28:34,574 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:28:34,576 [INFO] __main__: Источник видео изменён: 1
+2026-06-05 10:28:34,655 [WARNING] core.rtsp_manager: RTSPManager: попытка 1 провалена, пауза 1 с
+2026-06-05 10:28:35,663 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:28:35,716 [WARNING] core.rtsp_manager: RTSPManager: попытка 2 провалена, пауза 2 с
+2026-06-05 10:28:36,473 [INFO] core.rtsp_manager: RTSPManager: источник изменён -> 2
+2026-06-05 10:28:36,473 [INFO] core.rtsp_manager: RTSPManager: подключение к [2]
+2026-06-05 10:28:36,491 [INFO] __main__: Источник видео изменён: 2
+2026-06-05 10:28:36,539 [WARNING] core.rtsp_manager: RTSPManager: попытка 3 провалена, пауза 4 с
+2026-06-05 10:28:38,026 [INFO] core.rtsp_manager: RTSPManager: источник изменён -> 0
+2026-06-05 10:28:38,026 [INFO] core.rtsp_manager: RTSPManager: подключение к [0]
+2026-06-05 10:28:38,040 [INFO] __main__: Источник видео изменён: 0
+2026-06-05 10:28:39,249 [INFO] core.rtsp_manager: RTSPManager: источник изменён -> 1
+2026-06-05 10:28:39,260 [INFO] __main__: Источник видео изменён: 1
+2026-06-05 10:28:41,516 [WARNING] core.rtsp_manager: RTSPManager: попытка 4 провалена, пауза 8 с
+2026-06-05 10:28:41,516 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:28:41,581 [WARNING] core.rtsp_manager: RTSPManager: попытка 5 провалена, пауза 16 с
+2026-06-05 10:28:57,589 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:28:57,646 [WARNING] core.rtsp_manager: RTSPManager: попытка 6 провалена, пауза 30 с
+2026-06-05 10:29:27,658 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:29:27,709 [WARNING] core.rtsp_manager: RTSPManager: попытка 7 провалена, пауза 30 с
+2026-06-05 10:29:49,233 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:29:49,234 [INFO] core.rtsp_manager: RTSPManager: запущен [1]
+2026-06-05 10:29:49,236 [INFO] __main__: Поток захвата запущен
+2026-06-05 10:29:49,237 [INFO] __main__: Сервер запущен
+2026-06-05 10:29:49,298 [WARNING] core.rtsp_manager: RTSPManager: попытка 1 провалена, пауза 1 с
+2026-06-05 10:29:50,304 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:29:50,348 [WARNING] core.rtsp_manager: RTSPManager: попытка 2 провалена, пауза 2 с
+2026-06-05 10:29:52,355 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:29:52,403 [WARNING] core.rtsp_manager: RTSPManager: попытка 3 провалена, пауза 4 с
+2026-06-05 10:29:54,980 [INFO] __main__: Сервер останавливается...
+2026-06-05 10:29:54,980 [INFO] core.rtsp_manager: RTSPManager: остановлен
+2026-06-05 10:29:54,996 [INFO] __main__: Сервер остановлен
+2026-06-05 10:29:57,719 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:29:57,768 [WARNING] core.rtsp_manager: RTSPManager: попытка 8 провалена, пауза 30 с
+2026-06-05 10:30:27,772 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:30:27,817 [WARNING] core.rtsp_manager: RTSPManager: попытка 9 провалена, пауза 30 с
+2026-06-05 10:31:02,536 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:31:02,536 [INFO] core.rtsp_manager: RTSPManager: запущен [1]
+2026-06-05 10:31:02,538 [INFO] __main__: Поток захвата запущен
+2026-06-05 10:31:02,539 [INFO] __main__: Сервер запущен
+2026-06-05 10:31:02,600 [WARNING] core.rtsp_manager: RTSPManager: попытка 1 провалена, пауза 1 с
+2026-06-05 10:31:03,616 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:31:03,667 [WARNING] core.rtsp_manager: RTSPManager: попытка 2 провалена, пауза 2 с
+2026-06-05 10:31:05,676 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:31:05,728 [WARNING] core.rtsp_manager: RTSPManager: попытка 3 провалена, пауза 4 с
+2026-06-05 10:31:09,732 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:31:09,776 [WARNING] core.rtsp_manager: RTSPManager: попытка 4 провалена, пауза 8 с
+2026-06-05 10:31:17,779 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:31:17,826 [WARNING] core.rtsp_manager: RTSPManager: попытка 5 провалена, пауза 16 с
+2026-06-05 10:31:33,843 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:31:33,895 [WARNING] core.rtsp_manager: RTSPManager: попытка 6 провалена, пауза 30 с
+2026-06-05 10:32:03,905 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]
+2026-06-05 10:32:03,972 [WARNING] core.rtsp_manager: RTSPManager: попытка 7 провалена, пауза 30 с
+2026-06-05 10:32:33,981 [INFO] core.rtsp_manager: RTSPManager: подключение к [1]

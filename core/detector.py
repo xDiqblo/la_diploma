@@ -18,16 +18,31 @@ import cv2
 import time
 from ultralytics import YOLO
 
-# Все поддерживаемые COCO-классы с цветами рамок (BGR)
-# Ключ — COCO class_id, значение — (внутреннее_имя, цвет_BGR)
-SUPPORTED_CLASSES = {
-    0: ('person',      (0, 220, 80)),    # зелёный
-    2: ('car',         (220, 80, 0)),    # синий
-    5: ('bus',         (0, 210, 210)),   # жёлтый
-    7: ('truck',       (0, 140, 255)),   # оранжевый
-    3: ('motorcycle',  (180, 0, 240)),   # фиолетовый
-    1: ('bicycle',     (0, 180, 120)),   # зелёный тёмный
-}
+from core import classes as class_registry
+
+
+def _hex_to_bgr(hex_color: str) -> tuple:
+    """'#00e676' -> (118, 230, 0) в формате BGR для OpenCV."""
+    try:
+        h = hex_color.lstrip('#')
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return (b, g, r)
+    except (ValueError, IndexError):
+        return (0, 200, 255)
+
+
+def build_class_registry() -> dict:
+    """
+    {class_id: (имя, цвет_BGR)} — базовые COCO + пользовательские классы.
+    Пересобирается при изменении списка классов, чтобы детектор корректно
+    подписывал и раскрашивал рамки дообученных (новых) классов.
+    """
+    return {c['id']: (c['name'], _hex_to_bgr(c['color']))
+            for c in class_registry.list_classes()}
+
+
+# Базовый реестр COCO-классов (для совместимости и как стартовое значение).
+SUPPORTED_CLASSES = build_class_registry()
 
 # Обратный маппинг: имя → class_id (нужен для фильтрации по именам)
 NAME_TO_ID = {name: cid for cid, (name, _) in SUPPORTED_CLASSES.items()}
@@ -51,6 +66,11 @@ class Detector:
         self.enabled = False
         self.frame_counter = 0
 
+        # Реестр классов (базовые + пользовательские). Пересобирается через
+        # refresh_classes() после создания нового класса в интерфейсе.
+        self.class_map  = build_class_registry()
+        self.name_to_id = {n: cid for cid, (n, _) in self.class_map.items()}
+
         # Время первого появления каждого track_id (для подсчёта времени в кадре)
         self.track_start_time = {}
 
@@ -67,11 +87,18 @@ class Detector:
     # ─── управление классами ─────────────────────────────────────────────────
 
     def _apply_active_classes(self, class_names: list):
-        """Вычисляет множество активных COCO class_id по списку имён."""
+        """Вычисляет множество активных class_id по списку имён."""
         self.active_class_ids = {
-            NAME_TO_ID[n] for n in class_names if n in NAME_TO_ID
+            self.name_to_id[n] for n in class_names if n in self.name_to_id
         }
         self.active_class_names = set(class_names)
+
+    def refresh_classes(self):
+        """Пересобирает реестр классов после изменений (новый класс и т.п.)."""
+        self.class_map  = build_class_registry()
+        self.name_to_id = {n: cid for cid, (n, _) in self.class_map.items()}
+        # переустанавливаем активные id с учётом нового реестра
+        self._apply_active_classes(list(self.active_class_names))
 
     # ─── публичный интерфейс управления ─────────────────────────────────────
 
@@ -145,10 +172,10 @@ class Detector:
                 confidence = float(det[4])
                 class_id = int(det[5])
 
-                if class_id not in SUPPORTED_CLASSES:
+                if class_id not in self.class_map:
                     continue
 
-                class_name, base_color = SUPPORTED_CLASSES[class_id]
+                class_name, base_color = self.class_map[class_id]
 
                 # track_id от ByteTrack (может отсутствовать в первых кадрах)
                 track_id = None

@@ -20,6 +20,10 @@ from fastapi.staticfiles import StaticFiles
 
 import config
 from core import telegram_notify, database
+from core import classes as class_registry
+from core import rules as rule_engine
+from core import email_notify
+from core import zone_store
 from core.detector import Detector
 from core.video_buffer import VideoClipBuffer
 from core.cloud_sync import CloudSync
@@ -109,8 +113,17 @@ cloud_sync = CloudSync(
     enabled=SETTINGS.get('cloud_sync_enabled', False),
 )
 
+# Зоны хранятся в отдельных файлах zones/zoneX.json (core/zone_store.py).
+# Миграция: если файлов зон ещё нет, но в старом settings.json остались зоны —
+# переносим их в новое хранилище один раз.
+_stored_zones = zone_store.load_all()
+if not _stored_zones and SETTINGS.get('zones'):
+    zone_store.save_all(SETTINGS['zones'])
+# При старте все зоны выключены (требование ТЗ) — оператор включает вручную.
+_startup_zones = zone_store.load_all(reset_enabled=True)
+
 zone_manager = ZoneManager(
-    zones=SETTINGS.get('zones', []),
+    zones=_startup_zones,
     cooldown_default=SETTINGS.get('event_cooldown_seconds', 15),
 )
 
@@ -185,6 +198,71 @@ def save_event(event_type: str, obj: dict, frame,
                 event_type, zone, class_name, track_id, confidence)
 
 
+# Состояние диспетчера тревог (режимы immediate / after_n / delay)
+_rule_fire_counts: dict = {}   # rule_id -> накопленных срабатываний (after_n)
+
+
+def _send_email_async(subject: str, body: str, screenshot: str | None):
+    """Отправляет письмо в отдельном потоке, чтобы не блокировать захват кадров."""
+    cfg = {k: SETTINGS.get(k) for k in (
+        'email_enabled', 'email_smtp_host', 'email_smtp_port', 'email_use_tls',
+        'email_login', 'email_password', 'email_from', 'email_to')}
+    attach = screenshot if SETTINGS.get('email_attach_screenshot', True) else None
+
+    def _worker():
+        ok, msg = email_notify.send_alert(cfg, subject, body, attach)
+        if not ok:
+            logger.warning('Тревога по email не отправлена: %s', msg)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _dispatch_rule_alert(fired: dict, frame, zone_name: str | None):
+    """
+    Отправка тревоги по сработавшему правилу согласно настройкам диспетчера:
+      immediate — сразу; after_n — после N срабатываний; delay — с задержкой.
+    """
+    if not SETTINGS.get('email_enabled'):
+        return
+
+    rid  = fired['rule_id']
+    mode = SETTINGS.get('alert_send_mode', 'immediate')
+
+    zone_line = f'Зона: {zone_name}\n' if zone_name else ''
+    subject = f"Тревога: {fired['name']}"
+    body = (
+        f"Сработало правило: {fired['name']}\n"
+        f"{zone_line}"
+        f"Класс объекта: {fired['matched_class']} (обнаружено: {fired['count']})\n"
+        f"Время: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+
+    # Скриншот для вложения (если включено)
+    screenshot = None
+    if SETTINGS.get('email_attach_screenshot', True) and frame is not None:
+        fname = f"alert_{time.strftime('%Y%m%d_%H%M%S')}_{rid}.jpg"
+        path  = os.path.join(MEDIA_DIR, fname)
+        try:
+            cv2.imwrite(path, frame)
+            screenshot = path
+        except Exception as exc:
+            logger.error('Не удалось сохранить скриншот тревоги: %s', exc)
+
+    if mode == 'after_n':
+        need = max(1, int(SETTINGS.get('alert_send_after_n', 2)))
+        _rule_fire_counts[rid] = _rule_fire_counts.get(rid, 0) + 1
+        if _rule_fire_counts[rid] < need:
+            return
+        _rule_fire_counts[rid] = 0
+        _send_email_async(subject, body, screenshot)
+    elif mode == 'delay':
+        delay = max(0, float(SETTINGS.get('alert_send_delay', 5)))
+        threading.Timer(delay, _send_email_async,
+                        args=(subject, body, screenshot)).start()
+    else:  # immediate
+        _send_email_async(subject, body, screenshot)
+
+
 def handle_events(frame, detections: list):
     now  = time.time()
     h, w = frame.shape[:2]
@@ -193,6 +271,15 @@ def handle_events(frame, detections: list):
     for ev in zone_manager.process(detections, w, h, now):
         save_event(ev['event_type'], ev['obj'], frame,
                    zone=ev['zone'], save_media=ev['save_media'])
+
+    # Пользовательские правила тревог (rules.py): класс X в зоне Y и т.п.
+    fired_rules = rule_engine.evaluate(
+        zone_manager.get_membership(), current_class_counts, now)
+    for fr in fired_rules:
+        zone_name = zone_manager.zone_name(fr['zone_id']) if fr['zone_id'] else None
+        obj = {'class': fr['matched_class'], 'track_id': None, 'confidence': None}
+        save_event(f"Правило: {fr['name']}", obj, frame, zone=zone_name)
+        _dispatch_rule_alert(fr, frame, zone_name)
 
     # Аномалии АЗС
     for alert in anomaly_detector.process(detections, now):
@@ -249,15 +336,19 @@ def capture_loop():
 
     frame_count  = 0
     fps_timer    = time.time()
-    last_fps_upd = time.time()
+    last_seq     = -1
+    low_fps_logged = 0.0
 
     logger.info('Поток захвата запущен')
 
     while running:
-        frame = rtsp_manager.read()
-        if frame is None:
-            time.sleep(0.02)
+        seq, frame = rtsp_manager.read_seq()
+        # Обрабатываем только новые кадры — иначе YOLO гоняется по одному и тому
+        # же кадру многократно, что зря греет CPU и искажает счётчик FPS.
+        if frame is None or seq == last_seq:
+            time.sleep(0.005)
             continue
+        last_seq = seq
 
         processed, dets, counts = detector.process_frame(frame)
         zone_manager.draw(processed)
@@ -278,6 +369,18 @@ def capture_loop():
             detection_fps = frame_count
             frame_count   = 0
             fps_timer     = now
+            # Индикация падения FPS: если детекция включена и реальный FPS
+            # заметно ниже FPS источника — пишем предупреждение в лог
+            # (не чаще раза в 15 сек, чтобы не засорять журнал).
+            src_fps = rtsp_manager.get_status().get('stream_fps') or 0
+            if (detector.enabled and src_fps >= 5
+                    and detection_fps < src_fps * 0.6
+                    and now - low_fps_logged > 15.0):
+                logger.warning(
+                    'Низкий FPS обработки: %d из %.0f (источник). '
+                    'Увеличьте frame_skip или снизьте разрешение.',
+                    detection_fps, src_fps)
+                low_fps_logged = now
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +477,9 @@ async def page_settings(): return HTMLResponse(_read_html('settings.html'))
 @app.get('/retrain',  response_class=HTMLResponse)
 async def page_retrain():  return HTMLResponse(_read_html('retrain.html'))
 
+@app.get('/manage',   response_class=HTMLResponse)
+async def page_manage():   return HTMLResponse(_read_html('manage.html'))
+
 
 # ---------------------------------------------------------------------------
 # API: детекция
@@ -384,6 +490,7 @@ async def api_detections():
     return {
         'detection_enabled': detector.enabled,
         'fps':               detection_fps,
+        'source_fps':        round(rtsp_manager.get_status().get('stream_fps') or 0),
         'objects':           current_detections,
         'class_counts':      current_class_counts,
         'zones':             current_zone_stats,
@@ -395,6 +502,8 @@ async def api_start():
     _alerted_appear.clear()
     _alerted_long.clear()
     _last_global_event.clear()
+    _rule_fire_counts.clear()
+    rule_engine.reset_runtime()
     zone_manager.reset_runtime()
     anomaly_detector.reset()
     detector.set_enabled(True)
@@ -405,6 +514,8 @@ async def api_start():
 async def api_stop():
     global current_zone_stats
     detector.set_enabled(False)
+    _rule_fire_counts.clear()
+    rule_engine.reset_runtime()
     zone_manager.reset_runtime()
     anomaly_detector.reset()
     current_zone_stats = zone_manager.get_live()
@@ -531,17 +642,150 @@ async def api_events_clear():
 
 @app.get('/api/zones')
 async def api_get_zones():
-    return {'zones': SETTINGS.get('zones', [])}
+    return {'zones': zone_store.load_all()}
 
 
 @app.post('/api/zones')
 async def api_save_zones(request: Request):
-    global SETTINGS
     data  = await request.json()
     zones = data.get('zones', [])
-    SETTINGS = config.save_settings({'zones': zones})
-    zone_manager.update_zones(zones)
-    return {'status': 'saved', 'zones': zones}
+    saved = zone_store.save_all(zones)
+    zone_manager.update_zones(saved)
+    return {'status': 'saved', 'zones': saved}
+
+
+@app.get('/api/zones/export')
+async def api_export_zone(id: str):
+    """Экспорт одной зоны в JSON-файл (zoneX.json)."""
+    zone = zone_store.export_zone(id)
+    if zone is None:
+        return JSONResponse({'ok': False, 'error': 'Зона не найдена'}, 404)
+    # Имя зоны может быть на кириллице, а заголовок Content-Disposition
+    # допускает только latin-1. Используем ASCII-безопасное имя файла по id.
+    safe = ''.join(ch for ch in str(zone.get('id', 'zone')) if ch.isalnum() or ch in '-_')
+    return JSONResponse(
+        zone,
+        headers={'Content-Disposition': f'attachment; filename="zone-{safe or "export"}.json"'})
+
+
+@app.post('/api/zones/import')
+async def api_import_zone(request: Request):
+    """Импорт зоны из JSON. Зона добавляется выключенной."""
+    data   = await request.json()
+    result = zone_store.import_zone(data)
+    if result.get('ok'):
+        zone_manager.update_zones(zone_store.load_all())
+    return result
+
+
+# ---------------------------------------------------------------------------
+# API: классы объектов (создание пользовательских классов)
+# ---------------------------------------------------------------------------
+
+@app.get('/api/classes')
+async def api_get_classes():
+    return {'classes': class_registry.list_classes()}
+
+
+@app.post('/api/classes')
+async def api_add_class(request: Request):
+    data   = await request.json()
+    result = class_registry.add_class(data.get('name', ''), data.get('color', '#a78bfa'))
+    if result.get('ok'):
+        detector.refresh_classes()
+    return result
+
+
+@app.put('/api/classes/{class_id}')
+async def api_update_class(class_id: int, request: Request):
+    data   = await request.json()
+    result = class_registry.update_class(class_id, data.get('name'), data.get('color'))
+    if result.get('ok'):
+        detector.refresh_classes()
+    return result
+
+
+@app.delete('/api/classes/{class_id}')
+async def api_delete_class(class_id: int):
+    result = class_registry.delete_class(class_id)
+    if result.get('ok'):
+        detector.refresh_classes()
+    return result
+
+
+# ---------------------------------------------------------------------------
+# API: правила тревог
+# ---------------------------------------------------------------------------
+
+@app.get('/api/rules')
+async def api_get_rules():
+    return {'rules': rule_engine.list_rules()}
+
+
+@app.post('/api/rules')
+async def api_save_rule(request: Request):
+    data = await request.json()
+    return rule_engine.save_rule(data)
+
+
+@app.delete('/api/rules/{rule_id}')
+async def api_delete_rule(rule_id: str):
+    return rule_engine.delete_rule(rule_id)
+
+
+# ---------------------------------------------------------------------------
+# API: диспетчер тревог (email)
+# ---------------------------------------------------------------------------
+
+@app.post('/api/alerts/test')
+async def api_alerts_test():
+    """Тестовое письмо по текущим настройкам SMTP."""
+    cfg = {k: SETTINGS.get(k) for k in (
+        'email_enabled', 'email_smtp_host', 'email_smtp_port', 'email_use_tls',
+        'email_login', 'email_password', 'email_from', 'email_to')}
+    # для теста временно считаем отправку включённой
+    cfg['email_enabled'] = True
+    ok, msg = email_notify.test_connection(cfg)
+    return JSONResponse({'ok': ok, 'message': msg})
+
+
+# ---------------------------------------------------------------------------
+# API: ручная разметка кадров (без автоматической детекции)
+# ---------------------------------------------------------------------------
+
+@app.get('/api/retrain/grab_frame')
+async def api_grab_frame():
+    """
+    Возвращает текущий «чистый» кадр видеопотока (без рамок детекции) в JPEG.
+    Работает независимо от того, включена детекция или нет — оператор может
+    отбирать кадры вручную.
+    """
+    frame = rtsp_manager.read()
+    if frame is None:
+        return JSONResponse({'error': 'Нет кадра от источника'}, 503)
+    ok, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    if not ok:
+        return JSONResponse({'error': 'Ошибка кодирования кадра'}, 500)
+    from fastapi.responses import Response
+    h, w = frame.shape[:2]
+    return Response(content=jpeg.tobytes(), media_type='image/jpeg',
+                    headers={'X-Frame-Width': str(w), 'X-Frame-Height': str(h)})
+
+
+@app.post('/api/retrain/manual_save')
+async def api_manual_save(request: Request):
+    """
+    Сохраняет вручную размеченный кадр в обучающую выборку.
+    Тело: {bbox:[x1,y1,x2,y2] (пиксели исходного кадра), class:"имя"}.
+    Кадр берётся текущий из видеопотока (без детекции).
+    """
+    data  = await request.json()
+    bbox  = data.get('bbox')
+    cls   = (data.get('class') or '').strip()
+    frame = rtsp_manager.read()
+    if frame is None:
+        return JSONResponse({'ok': False, 'error': 'Нет кадра от источника'}, 503)
+    return trainer.add_manual_example(frame, bbox, cls)
 
 
 # ---------------------------------------------------------------------------
@@ -570,7 +814,9 @@ async def api_save_settings(request: Request):
         api_key=SETTINGS.get('cloud_api_key', ''),
         enabled=SETTINGS.get('cloud_sync_enabled', False),
     )
-    zone_manager.update_zones(SETTINGS.get('zones', []))
+    # Зоны хранятся в zone_store (zones/zoneX.json), а не в settings.json —
+    # сохранение прочих настроек не должно затирать активные зоны.
+    zone_manager.update_zones(zone_store.load_all())
     zone_manager.cooldown_default = SETTINGS.get('event_cooldown_seconds', 15)
 
     # Смена источника через настройки (если поле изменилось)

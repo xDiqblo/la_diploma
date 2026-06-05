@@ -113,10 +113,12 @@ input[type=range]::-webkit-slider-thumb{
 <body>
 
 <div class="topbar">
-  <div class="logo">АЗС<em> · CAM-01</em></div>
+  <a class="logo" href="/" style="text-decoration:none">АЗС<em> · CAM-01</em></a>
   <nav class="nav">
     <a href="/">МОНИТОР</a>
     <a href="/events">СОБЫТИЯ</a>
+    <a href="/retrain">ДООБУЧЕНИЕ</a>
+    <a href="/manage">УПРАВЛЕНИЕ</a>
     <a href="/settings" class="cur">НАСТРОЙКИ</a>
   </nav>
 </div>
@@ -133,7 +135,7 @@ input[type=range]::-webkit-slider-thumb{
           placeholder="0 — USB-камера, rtsp://... — IP-камера, или путь к файлу">
         <div class="hint">
           Примеры: <code>0</code> (первая USB), <code>rtsp://admin:pass@192.168.1.64/stream</code>,
-          <code>test_video.mp4</code>. Перезапустите сервер после изменения.
+          <code>test_video.mp4</code>. Источник применяется немедленно, без перезапуска сервера.
         </div>
       </div>
     </div>
@@ -211,10 +213,10 @@ input[type=range]::-webkit-slider-thumb{
     <div class="sbody">
       <div class="field">
         <div class="hint" style="background:rgba(0,200,255,.06);border:1px solid var(--bord);border-radius:4px;padding:10px;line-height:1.5">
-          ⚑ Основные тревоги настраиваются <b>зонами срабатывания</b> прямо на видео
-          (страница «Монитор» → кнопка «✎ Зоны»). Это убирает «мусорные» события:
-          тревога возникает только в нужной области кадра, а не на каждую машину.
-          Опции ниже — это запасные <b>глобальные</b> тревоги на весь кадр (по умолчанию выключены).
+          Основные тревоги настраиваются зонами срабатывания и правилами тревог.
+          Это ограничивает события нужной областью кадра и снижает число ложных
+          срабатываний. Опции ниже — запасные глобальные тревоги на весь кадр
+          (по умолчанию выключены).
         </div>
       </div>
       <div class="field">
@@ -232,7 +234,7 @@ input[type=range]::-webkit-slider-thumb{
           <label>Глобальная тревога на появление объекта</label>
           <label class="toggle"><input type="checkbox" id="alert_on_appearance"><div class="tslider"></div></label>
         </div>
-        <div class="hint">⚠ Шумный режим: событие на КАЖДЫЙ новый объект во всём кадре. По умолчанию выкл.</div>
+        <div class="hint">Внимание: шумный режим — событие на каждый новый объект во всём кадре. По умолчанию выключено.</div>
       </div>
       <div class="field">
         <div class="toggle-row">

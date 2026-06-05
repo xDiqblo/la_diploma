@@ -39,6 +39,7 @@ class RTSPManager:
         self._cap_lock   = threading.Lock()      # защита _cap от race condition
 
         self._last_frame = None
+        self._frame_seq  = 0          # увеличивается с каждым новым кадром
         self._frame_lock = threading.Lock()
 
         self._status         = self.STATUS_STOPPED
@@ -103,6 +104,17 @@ class RTSPManager:
         """Последний кадр (BGR numpy) или None — не блокирует."""
         with self._frame_lock:
             return self._last_frame.copy() if self._last_frame is not None else None
+
+    def read_seq(self):
+        """
+        Возвращает (seq, frame): порядковый номер кадра и сам кадр.
+        Позволяет потребителю обрабатывать только новые кадры и не гонять
+        YOLO по одному и тому же кадру многократно.
+        """
+        with self._frame_lock:
+            if self._last_frame is None:
+                return self._frame_seq, None
+            return self._frame_seq, self._last_frame.copy()
 
     def change_source(self, new_source: str):
         """
@@ -184,7 +196,9 @@ class RTSPManager:
                     continue
                 self._cap = cap
 
-            self.stream_fps         = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            raw_fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+            # Защита от некорректного значения FPS у файла/потока
+            self.stream_fps         = raw_fps if 1.0 <= raw_fps <= 120.0 else 25.0
             self._status            = self.STATUS_CONNECTED
             self._connected_at      = time.time()
             self._error_msg         = ''
@@ -192,7 +206,17 @@ class RTSPManager:
             self._reconnect_attempts = 0
             is_file = _is_file(source_str)
 
-            logger.info('RTSPManager: подключено FPS=%.1f [%s]', self.stream_fps, source_str)
+            # Интервал между кадрами для пейсинга видеофайлов.
+            # Камеры (USB/RTSP) сами выдают кадры в реальном времени, поэтому
+            # для них пейсинг не нужен. Для файла OpenCV отдаёт кадры так быстро,
+            # как успевает их декодировать — без пейсинга видео идёт «в ускоренном
+            # режиме». Здесь привязываем чтение к собственному FPS файла.
+            frame_interval = 1.0 / self.stream_fps if (is_file and self.stream_fps > 0) else 0.0
+            next_frame_t   = time.time()
+            slow_logged    = 0.0   # антиспам для предупреждений о падении FPS
+
+            logger.info('RTSPManager: подключено FPS=%.1f [%s] (пейсинг=%s)',
+                        self.stream_fps, source_str, 'вкл' if is_file else 'выкл')
 
             consecutive_failures = 0
             while self._running and not self._change_requested:
@@ -204,6 +228,7 @@ class RTSPManager:
                         # но только если источник не менялся
                         if not self._change_requested:
                             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            next_frame_t = time.time()
                             consecutive_failures = 0
                         continue
                     else:
@@ -219,6 +244,27 @@ class RTSPManager:
                 consecutive_failures = 0
                 with self._frame_lock:
                     self._last_frame = frame
+                    self._frame_seq += 1
+
+                # Пейсинг воспроизведения видеофайла под его собственный FPS.
+                # Используем абсолютную метку времени следующего кадра, чтобы
+                # ошибка не накапливалась. Прерываемся через _wakeup при
+                # остановке/смене источника.
+                if frame_interval > 0.0:
+                    next_frame_t += frame_interval
+                    delay = next_frame_t - time.time()
+                    if delay > 0:
+                        self._wakeup.wait(timeout=delay)
+                    elif delay < -1.0:
+                        # Декодер отстаёт более чем на секунду — система не
+                        # успевает обрабатывать кадры в реальном времени.
+                        now = time.time()
+                        if now - slow_logged > 10.0:
+                            logger.warning(
+                                'RTSPManager: обработка отстаёт от FPS файла '
+                                '(%.1f FPS), кадры могут пропускаться', self.stream_fps)
+                            slow_logged = now
+                        next_frame_t = now   # сбрасываем дрейф
 
             # Выходим из цикла чтения — освобождаем cap
             with self._cap_lock:

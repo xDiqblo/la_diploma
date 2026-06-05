@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>АЗС · Управление</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080b12;--surf:#0e1420;--card:#131a28;--bord:#1c2840;
+  --acc:#00c8ff;--grn:#00e676;--red:#ff3d71;--ylw:#ffcc00;--pur:#a78bfa;
+  --txt:#b8ccec;--mut:#3a4f70;
+  --font:'Rajdhani',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;
+  background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:0;z-index:100}
+.logo{font-size:18px;font-weight:700;letter-spacing:3px;color:var(--acc);text-decoration:none}
+.logo em{color:var(--txt);font-style:normal}
+.nav{display:flex;gap:4px}
+.nav a{padding:6px 16px;border-radius:4px;font-size:14px;font-weight:600;letter-spacing:1px;
+  color:var(--mut);text-decoration:none;border:1px solid transparent;transition:.2s}
+.nav a:hover,.nav a.cur{color:var(--acc);border-color:var(--acc);background:rgba(0,200,255,.06)}
+.wrap{max-width:1000px;margin:0 auto;padding:18px 20px}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--bord);margin-bottom:18px}
+.tab{padding:11px 22px;font-size:14px;font-weight:600;letter-spacing:1px;color:var(--mut);
+  cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.2s}
+.tab.active{color:var(--acc);border-bottom-color:var(--acc)}
+.tabc{display:none}.tabc.active{display:block}
+.section{background:var(--card);border:1px solid var(--bord);border-radius:6px;margin-bottom:14px;overflow:hidden}
+.sh{padding:11px 16px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:var(--acc);border-bottom:1px solid var(--bord)}
+.sbody{padding:16px}
+.field{margin-bottom:14px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:14px;font-weight:600;margin-bottom:6px}
+.hint{font-size:12px;color:var(--mut);margin-top:5px;line-height:1.4}
+input[type=text],input[type=number],input[type=time],select{width:100%;padding:9px 12px;border-radius:4px;
+  border:1px solid var(--bord);background:var(--surf);color:var(--txt);font-family:var(--mono);font-size:14px}
+input:focus,select:focus{outline:none;border-color:var(--acc)}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>div{flex:1;min-width:120px}
+.btn{padding:9px 18px;border:none;border-radius:5px;font-family:var(--font);font-size:14px;
+  font-weight:700;letter-spacing:1px;cursor:pointer;transition:.2s}
+.btn-acc{background:linear-gradient(135deg,#0090bb,var(--acc));color:#000}
+.btn-grn{background:linear-gradient(135deg,#00b04a,var(--grn));color:#000}
+.btn-sm{padding:6px 12px;font-size:13px}
+.btn-out{background:var(--surf);color:var(--txt);border:1px solid var(--bord)}
+.btn-out:hover{border-color:var(--acc);color:var(--acc)}
+.btn-del{background:rgba(255,61,113,.12);color:var(--red);border:1px solid var(--red)}
+/* списки классов/правил */
+.item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.04)}
+.item:last-child{border-bottom:none}
+.swatch{width:16px;height:16px;border-radius:4px;flex-shrink:0}
+.iname{font-weight:700;color:#fff;font-size:15px}
+.imeta{font-family:var(--mono);font-size:12px;color:var(--mut)}
+.spacer{flex:1}
+.tag{font-size:11px;font-family:var(--mono);color:var(--acc);border:1px solid var(--acc);
+  border-radius:3px;padding:1px 7px}
+.tag.off{color:var(--mut);border-color:var(--bord)}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.chk{display:flex;align-items:center;gap:6px;font-size:13px;font-family:var(--mono);
+  background:var(--surf);border:1px solid var(--bord);border-radius:4px;padding:5px 10px;cursor:pointer}
+.toggle-row{display:flex;align-items:center;justify-content:space-between}
+.toggle{position:relative;width:46px;height:24px;cursor:pointer;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.tslider{position:absolute;inset:0;background:var(--bord);border-radius:24px;transition:.25s}
+.tslider::before{content:'';position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.25s}
+.toggle input:checked+.tslider{background:var(--acc)}
+.toggle input:checked+.tslider::before{transform:translateX(22px)}
+.empty{text-align:center;color:var(--mut);padding:24px;font-size:14px}
+.msg{font-family:var(--mono);font-size:13px;padding:8px 14px;border-radius:4px;display:none;margin-top:10px}
+.msg.ok{background:rgba(0,230,118,.12);border:1px solid var(--grn);color:var(--grn)}
+.msg.err{background:rgba(255,61,113,.12);border:1px solid var(--red);color:var(--red)}
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:500;display:flex;flex-direction:column;gap:8px}
+.toast{padding:10px 16px;border-radius:6px;font-size:13px;font-weight:600;max-width:320px;border:1px solid}
+.toast.ok{background:rgba(0,230,118,.12);border-color:var(--grn);color:var(--grn)}
+.toast.err{background:rgba(255,61,113,.12);border-color:var(--red);color:var(--red)}
+.toast.info{background:rgba(0,200,255,.12);border-color:var(--acc);color:var(--acc)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="logo" href="/">АЗС<em> · CAM-01</em></a>
+  <nav class="nav">
+    <a href="/">МОНИТОР</a>
+    <a href="/events">СОБЫТИЯ</a>
+    <a href="/retrain">ДООБУЧЕНИЕ</a>
+    <a href="/manage" class="cur">УПРАВЛЕНИЕ</a>
+    <a href="/settings">НАСТРОЙКИ</a>
+  </nav>
+</div>
+
+<div class="wrap">
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('classes')">Классы объектов</div>
+    <div class="tab" onclick="switchTab('rules')">Правила тревог</div>
+    <div class="tab" onclick="switchTab('alerts')">Отправка тревог</div>
+  </div>
+
+  <!-- ── КЛАССЫ ─────────────────────────────────────────── -->
+  <div class="tabc active" id="tab-classes">
+    <div class="section">
+      <div class="sh">Создать класс объекта</div>
+      <div class="sbody">
+        <div class="row">
+          <div style="flex:2">
+            <label>Имя класса</label>
+            <input type="text" id="clsName" placeholder="например: сигарета, огонь, дым, открытая дверь">
+          </div>
+          <div style="flex:0 0 80px">
+            <label>Цвет</label>
+            <input type="color" id="clsColor" value="#a78bfa" style="width:100%;height:38px;padding:2px;border:1px solid var(--bord);background:var(--surf)">
+          </div>
+          <div style="flex:0 0 auto;display:flex;align-items:flex-end">
+            <button class="btn btn-grn" onclick="addClass()">Добавить класс</button>
+          </div>
+        </div>
+        <div class="hint">Латиница или кириллица. После создания класс доступен при ручной разметке
+          и учитывается при дообучении модели.</div>
+        <div class="msg" id="clsMsg"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="sh">Список классов</div>
+      <div id="clsList"><div class="empty">Загрузка...</div></div>
+    </div>
+  </div>
+
+  <!-- ── ПРАВИЛА ────────────────────────────────────────── -->
+  <div class="tabc" id="tab-rules">
+    <div class="section">
+      <div class="sh" id="ruleFormTitle">Создать правило тревоги</div>
+      <div class="sbody">
+        <input type="hidden" id="ruleId">
+        <div class="field">
+          <label>Название правила</label>
+          <input type="text" id="ruleName" placeholder="например: Курение на территории АЗС">
+        </div>
+        <div class="field">
+          <label>Классы-триггеры (срабатывает по любому отмеченному)</label>
+          <div class="checks" id="ruleClasses"></div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Зона</label>
+            <select id="ruleZone"><option value="">Весь кадр</option></select>
+          </div>
+          <div>
+            <label>Мин. объектов одновременно</label>
+            <input type="number" id="ruleMinCount" min="1" max="50" value="1">
+          </div>
+          <div>
+            <label>Пауза между тревогами, сек</label>
+            <input type="number" id="ruleCooldown" min="0" max="3600" value="30">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Активно с</label>
+            <input type="time" id="ruleFrom" value="00:00">
+          </div>
+          <div>
+            <label>Активно до</label>
+            <input type="time" id="ruleTo" value="23:59">
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <div class="toggle-row" style="width:100%">
+              <label style="margin:0">Включено</label>
+              <label class="toggle"><input type="checkbox" id="ruleEnabled" checked><div class="tslider"></div></label>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn btn-grn" onclick="saveRule()">Сохранить правило</button>
+          <button class="btn btn-out" onclick="resetRuleForm()">Очистить форму</button>
+        </div>
+        <div class="hint" id="rulePreview" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="sh">Правила</div>
+      <div id="ruleList"><div class="empty">Загрузка...</div></div>
+    </div>
+  </div>
+
+  <!-- ── ОТПРАВКА ТРЕВОГ ────────────────────────────────── -->
+  <div class="tabc" id="tab-alerts">
+    <div class="section">
+      <div class="sh">Отправка тревог по email</div>
+      <div class="sbody">
+        <div class="field">
+          <div class="toggle-row">
+            <label style="margin:0">Включить отправку email по сработавшим правилам</label>
+            <label class="toggle"><input type="checkbox" id="emailEnabled"><div class="tslider"></div></label>
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:2"><label>SMTP-хост</label><input type="text" id="emailHost" placeholder="smtp.gmail.com"></div>
+          <div><label>Порт</label><input type="number" id="emailPort" value="587"></div>
+          <div style="display:flex;align-items:flex-end">
+            <div class="toggle-row" style="width:100%">
+              <label style="margin:0">TLS</label>
+              <label class="toggle"><input type="checkbox" id="emailTls" checked><div class="tslider"></div></label>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div><label>Логин SMTP</label><input type="text" id="emailLogin" placeholder="operator@example.com"></div>
+          <div><label>Пароль приложения</label><input type="text" id="emailPassword" placeholder="пароль приложения SMTP"></div>
+        </div>
+        <div class="field">
+          <label>Адрес отправителя (необязательно)</label>
+          <input type="text" id="emailFrom" placeholder="по умолчанию = логин SMTP">
+        </div>
+        <div class="field">
+          <label>Получатели (через запятую)</label>
+          <input type="text" id="emailTo" placeholder="operator@example.com, security@example.com">
+        </div>
+        <div class="row">
+          <div>
+            <label>Когда отправлять</label>
+            <select id="sendMode" onchange="sendModeChanged()">
+              <option value="immediate">Сразу при срабатывании</option>
+              <option value="after_n">После N срабатываний</option>
+              <option value="delay">С задержкой</option>
+            </select>
+          </div>
+          <div id="afterNWrap">
+            <label>N срабатываний</label>
+            <input type="number" id="sendAfterN" min="1" max="100" value="2">
+          </div>
+          <div id="delayWrap">
+            <label>Задержка, сек</label>
+            <input type="number" id="sendDelay" min="0" max="600" value="5">
+          </div>
+        </div>
+        <div class="field">
+          <div class="toggle-row">
+            <label style="margin:0">Прикладывать скриншот к письму</label>
+            <label class="toggle"><input type="checkbox" id="attachShot" checked><div class="tslider"></div></label>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:6px">
+          <button class="btn btn-grn" onclick="saveAlerts()">Сохранить настройки</button>
+          <button class="btn btn-acc" onclick="testEmail()">Отправить тестовое письмо</button>
+        </div>
+        <div class="hint">Настройки применяются без перезапуска сервера. Скрипт правила:
+          «ЕСЛИ класс = X [И зона = Y] ТО отправить тревогу» задаётся на вкладке «Правила тревог».</div>
+        <div class="msg" id="alertsMsg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+const CLASS_LABELS = {person:'человек',car:'авто',bus:'автобус',truck:'грузовик',
+  motorcycle:'мотоцикл',bicycle:'велосипед'};
+let allClasses = [];
+let allZones   = [];
+
+function toast(text,type='info',ms=3500){
+  const el=document.createElement('div');el.className='toast '+type;el.textContent=text;
+  document.getElementById('toastWrap').appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';setTimeout(()=>el.remove(),350)},ms);
+}
+function showMsg(id,text,cls){
+  const el=document.getElementById(id);el.textContent=text;
+  el.className='msg'+(cls?' '+cls:'');el.style.display='block';
+  if(cls==='ok')setTimeout(()=>el.style.display='none',3000);
+}
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['classes','rules','alerts'][i]===name));
+  document.querySelectorAll('.tabc').forEach(c=>c.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+/* ── КЛАССЫ ── */
+async function loadClasses(){
+  const d=await(await fetch('/api/classes')).json();
+  allClasses=d.classes||[];
+  renderClasses();
+  renderRuleClassChecks();
+}
+function renderClasses(){
+  const el=document.getElementById('clsList');
+  el.innerHTML=allClasses.map(c=>`
+    <div class="item">
+      <span class="swatch" style="background:${c.color}"></span>
+      <span class="iname">${c.name}</span>
+      <span class="imeta">id ${c.id}</span>
+      <span class="tag ${c.custom?'':'off'}">${c.custom?'пользовательский':'базовый'}</span>
+      <span class="spacer"></span>
+      ${c.custom?`<button class="btn btn-del btn-sm" onclick="delClass(${c.id},'${c.name}')">Удалить</button>`:''}
+    </div>`).join('');
+}
+async function addClass(){
+  const name=document.getElementById('clsName').value.trim();
+  const color=document.getElementById('clsColor').value;
+  if(!name){showMsg('clsMsg','Введите имя класса','err');return;}
+  const r=await fetch('/api/classes',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,color})});
+  const d=await r.json();
+  if(d.ok){showMsg('clsMsg','Класс добавлен: '+name,'ok');document.getElementById('clsName').value='';loadClasses();}
+  else showMsg('clsMsg','Ошибка: '+(d.error||'не удалось создать класс'),'err');
+}
+async function delClass(id,name){
+  if(!confirm('Удалить класс "'+name+'"?'))return;
+  const r=await fetch('/api/classes/'+id,{method:'DELETE'});
+  const d=await r.json();
+  if(d.ok){toast('Класс удалён','ok');loadClasses();}
+  else toast('Ошибка: '+(d.error||''),'err');
+}
+
+/* ── ПРАВИЛА ── */
+async function loadZonesForRules(){
+  try{
+    const d=await(await fetch('/api/zones')).json();
+    allZones=d.zones||[];
+    const sel=document.getElementById('ruleZone');
+    sel.innerHTML='<option value="">Весь кадр</option>'+
+      allZones.map(z=>`<option value="${z.id}">${z.name}</option>`).join('');
+  }catch(e){console.warn(e);}
+}
+function renderRuleClassChecks(){
+  const el=document.getElementById('ruleClasses');
+  el.innerHTML=allClasses.map(c=>
+    `<label class="chk"><input type="checkbox" value="${c.name}">${c.name}</label>`).join('');
+}
+async function loadRules(){
+  const d=await(await fetch('/api/rules')).json();
+  const rules=d.rules||[];
+  const el=document.getElementById('ruleList');
+  if(!rules.length){el.innerHTML='<div class="empty">Правил пока нет</div>';return;}
+  el.innerHTML=rules.map(r=>{
+    const zone=r.zone_id?(allZones.find(z=>z.id===r.zone_id)||{}).name||'(зона удалена)':'весь кадр';
+    return `<div class="item">
+      <span class="iname">${r.name}</span>
+      <span class="tag ${r.enabled?'':'off'}">${r.enabled?'вкл':'выкл'}</span>
+      <span class="imeta">классы: ${r.classes.join(', ')||'—'} | зона: ${zone} | ≥${r.min_count} | ${r.time_from}–${r.time_to}</span>
+      <span class="spacer"></span>
+      <button class="btn btn-out btn-sm" onclick='editRule(${JSON.stringify(r)})'>Изменить</button>
+      <button class="btn btn-del btn-sm" onclick="delRule('${r.id}','${r.name}')">Удалить</button>
+    </div>`;
+  }).join('');
+}
+function editRule(r){
+  document.getElementById('ruleId').value=r.id;
+  document.getElementById('ruleName').value=r.name;
+  document.getElementById('ruleZone').value=r.zone_id||'';
+  document.getElementById('ruleMinCount').value=r.min_count;
+  document.getElementById('ruleCooldown').value=r.cooldown_seconds;
+  document.getElementById('ruleFrom').value=r.time_from;
+  document.getElementById('ruleTo').value=r.time_to;
+  document.getElementById('ruleEnabled').checked=r.enabled;
+  document.querySelectorAll('#ruleClasses input').forEach(cb=>cb.checked=r.classes.includes(cb.value));
+  document.getElementById('ruleFormTitle').textContent='Изменить правило: '+r.name;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function resetRuleForm(){
+  document.getElementById('ruleId').value='';
+  document.getElementById('ruleName').value='';
+  document.getElementById('ruleZone').value='';
+  document.getElementById('ruleMinCount').value=1;
+  document.getElementById('ruleCooldown').value=30;
+  document.getElementById('ruleFrom').value='00:00';
+  document.getElementById('ruleTo').value='23:59';
+  document.getElementById('ruleEnabled').checked=true;
+  document.querySelectorAll('#ruleClasses input').forEach(cb=>cb.checked=false);
+  document.getElementById('ruleFormTitle').textContent='Создать правило тревоги';
+}
+async function saveRule(){
+  const name=document.getElementById('ruleName').value.trim();
+  if(!name){toast('Введите название правила','err');return;}
+  const classes=[...document.querySelectorAll('#ruleClasses input:checked')].map(cb=>cb.value);
+  if(!classes.length){toast('Отметьте хотя бы один класс-триггер','err');return;}
+  const data={
+    id:document.getElementById('ruleId').value||undefined,
+    name,classes,
+    zone_id:document.getElementById('ruleZone').value||null,
+    min_count:parseInt(document.getElementById('ruleMinCount').value)||1,
+    cooldown_seconds:parseInt(document.getElementById('ruleCooldown').value)||30,
+    time_from:document.getElementById('ruleFrom').value||'00:00',
+    time_to:document.getElementById('ruleTo').value||'23:59',
+    enabled:document.getElementById('ruleEnabled').checked,
+  };
+  const r=await fetch('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const d=await r.json();
+  if(d.ok){toast('Правило сохранено','ok');resetRuleForm();loadRules();}
+  else toast('Ошибка сохранения правила','err');
+}
+async function delRule(id,name){
+  if(!confirm('Удалить правило "'+name+'"?'))return;
+  const r=await fetch('/api/rules/'+id,{method:'DELETE'});
+  const d=await r.json();
+  if(d.ok){toast('Правило удалено','ok');loadRules();}
+  else toast('Ошибка: '+(d.error||''),'err');
+}
+
+/* ── ОТПРАВКА ТРЕВОГ ── */
+function sendModeChanged(){
+  const m=document.getElementById('sendMode').value;
+  document.getElementById('afterNWrap').style.display=(m==='after_n')?'block':'none';
+  document.getElementById('delayWrap').style.display=(m==='delay')?'block':'none';
+}
+async function loadAlerts(){
+  const s=await(await fetch('/api/settings')).json();
+  document.getElementById('emailEnabled').checked=!!s.email_enabled;
+  document.getElementById('emailHost').value=s.email_smtp_host||'';
+  document.getElementById('emailPort').value=s.email_smtp_port||587;
+  document.getElementById('emailTls').checked=s.email_use_tls!==false;
+  document.getElementById('emailLogin').value=s.email_login||'';
+  document.getElementById('emailPassword').value=s.email_password||'';
+  document.getElementById('emailFrom').value=s.email_from||'';
+  document.getElementById('emailTo').value=(s.email_to||[]).join(', ');
+  document.getElementById('sendMode').value=s.alert_send_mode||'immediate';
+  document.getElementById('sendAfterN').value=s.alert_send_after_n||2;
+  document.getElementById('sendDelay').value=s.alert_send_delay||5;
+  document.getElementById('attachShot').checked=s.email_attach_screenshot!==false;
+  sendModeChanged();
+}
+function collectAlerts(){
+  const to=document.getElementById('emailTo').value.split(',').map(s=>s.trim()).filter(Boolean);
+  return {
+    email_enabled:document.getElementById('emailEnabled').checked,
+    email_smtp_host:document.getElementById('emailHost').value.trim(),
+    email_smtp_port:parseInt(document.getElementById('emailPort').value)||587,
+    email_use_tls:document.getElementById('emailTls').checked,
+    email_login:document.getElementById('emailLogin').value.trim(),
+    email_password:document.getElementById('emailPassword').value,
+    email_from:document.getElementById('emailFrom').value.trim(),
+    email_to:to,
+    alert_send_mode:document.getElementById('sendMode').value,
+    alert_send_after_n:parseInt(document.getElementById('sendAfterN').value)||2,
+    alert_send_delay:parseInt(document.getElementById('sendDelay').value)||5,
+    email_attach_screenshot:document.getElementById('attachShot').checked,
+  };
+}
+async function saveAlerts(){
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(collectAlerts())});
+  if(r.ok)showMsg('alertsMsg','Настройки отправки тревог сохранены','ok');
+  else showMsg('alertsMsg','Ошибка сохранения','err');
+}
+async function testEmail(){
+  await saveAlerts();
+  showMsg('alertsMsg','Отправка тестового письма...','');
+  const r=await fetch('/api/alerts/test',{method:'POST'});
+  const d=await r.json();
+  showMsg('alertsMsg',d.message,d.ok?'ok':'err');
+}
+
+/* init */
+(async function(){
+  await loadClasses();
+  await loadZonesForRules();
+  await loadRules();
+  await loadAlerts();
+})();
+</script>
+</body>
+</html>

@@ -68,13 +68,20 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
 .b-edit { background: var(--ylw); color: #000; display: none; }
 .b-edit.on { display: inline-block; }
 
-/* SVG зоны */
+/* SVG зоны — всегда поверх видео. Вне режима рисования прозрачен для кликов,
+   но сами полигоны кликабельны (контекстная настройка зоны по клику). */
 #zoneSvg {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  z-index: 2; display: none; cursor: crosshair;
+  z-index: 2; display: block; pointer-events: none;
 }
-#zoneSvg.editing { display: block; }
-.zpoly { fill-opacity: .18; stroke-width: 2; vector-effect: non-scaling-stroke; }
+#zoneSvg.editing { cursor: crosshair; pointer-events: auto; }
+.zpoly { fill-opacity: .12; stroke-width: 2; vector-effect: non-scaling-stroke; }
+/* кликабельная зона вне режима рисования */
+.zclick { pointer-events: auto; cursor: pointer; }
+.zclick:hover { fill-opacity: .28; }
+.zsel { stroke-width: 4 !important; fill-opacity: .32 !important;
+  filter: drop-shadow(0 0 6px currentColor); animation: zpulse 1s ease-in-out infinite; }
+@keyframes zpulse { 0%,100%{stroke-opacity:1} 50%{stroke-opacity:.45} }
 .zpoint { fill: #fff; stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; }
 
 /* ── источник видео ──────────────────── */
@@ -285,12 +292,13 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
 <body>
 
 <div class="topbar">
-  <div class="logo">АЗС<em> · CAM-01</em></div>
+  <a class="logo" href="/" style="text-decoration:none">АЗС<em> · CAM-01</em></a>
   <nav class="nav">
     <a href="/" class="cur">МОНИТОР</a>
     <a href="/events">СОБЫТИЯ</a>
-    <a href="/settings">НАСТРОЙКИ</a>
     <a href="/retrain">ДООБУЧЕНИЕ</a>
+    <a href="/manage">УПРАВЛЕНИЕ</a>
+    <a href="/settings">НАСТРОЙКИ</a>
   </nav>
   <div class="topright">
     <div class="rec-dot"></div>
@@ -352,8 +360,7 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
         <div class="dropzone" id="dropzone">
           <input type="file" id="fileInput" accept=".mp4,.avi,.mov,.mkv,.webm,.ts,.m4v"
                  onchange="handleFileSelect(this.files)">
-          <div class="dz-icon">&#128249;</div>
-          <div class="dz-label">Перетащите файл или нажмите для выбора</div>
+          <div class="dz-label">Перетащите видеофайл или нажмите для выбора</div>
           <div class="dz-hint">MP4, AVI, MOV, MKV, WEBM — до 4 ГБ</div>
         </div>
         <div class="upload-bar-wrap" id="uploadBarWrap">
@@ -399,7 +406,11 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
     </div>
 
     <div class="panel">
-      <div class="ph">ЗОНЫ СРАБАТЫВАНИЯ</div>
+      <div class="ph">ЗОНЫ СРАБАТЫВАНИЯ
+        <label class="zact" style="flex:0 0 auto;padding:3px 8px;cursor:pointer">Импорт
+          <input type="file" accept=".json" style="display:none" onchange="importZoneFile(this)">
+        </label>
+      </div>
       <div class="zlist" id="zlist"><div class="empty">Зоны не заданы.<br>Нажмите «Зоны».</div></div>
     </div>
 
@@ -458,6 +469,10 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
         <label class="mchk"><input type="checkbox" value="truck">Грузовик</label>
         <label class="mchk"><input type="checkbox" value="person">Человек</label>
       </div>
+    </div>
+    <div class="mf">
+      <label>Привязанные правила тревог</label>
+      <div class="mchecks" id="zmRules"><span class="zb-hint">Правил пока нет. Создайте их в разделе «Управление».</span></div>
     </div>
     <div class="mf">
       <label>Цвет зоны</label>
@@ -671,6 +686,8 @@ let editing   = false;
 let drawing   = null;
 let editingZoneId  = null;
 let pendingPoints  = null;
+let selectedZoneId = null;   // выделенная по клику зона (подсветка + контекст)
+let allRules       = [];     // правила тревог для привязки к зоне
 
 const svg = document.getElementById('zoneSvg');
 
@@ -696,7 +713,12 @@ function renderZones() {
     if (!z.points || z.points.length < 2) return;
     const pts = z.points.map(p => p[0]+','+p[1]).join(' ');
     const op  = z.enabled ? '' : 'stroke-dasharray="0.02 0.01"';
-    html += `<polygon class="zpoly" points="${pts}" style="fill:${z.color};stroke:${z.color}" ${op}></polygon>`;
+    // Вне режима рисования полигон кликабелен — открывает контекстную настройку.
+    const clickable = editing ? '' : 'zclick';
+    const sel = (z.id === selectedZoneId) ? 'zsel' : '';
+    const handler = editing ? '' : `onclick="zoneClicked('${z.id}')"`;
+    html += `<polygon class="zpoly ${clickable} ${sel}" points="${pts}" ` +
+            `style="fill:${z.color};stroke:${z.color};color:${z.color}" ${op} ${handler}></polygon>`;
   });
   if (drawing && drawing.length) {
     const pts = drawing.map(p => p.x+','+p.y).join(' ');
@@ -727,8 +749,9 @@ function renderZoneList() {
         <span class="zm"><span>визитов:</span> <b>${lv.visitors}</b></span>
       </div>
       <div class="zactions">
-        <button class="zact" onclick="editZone('${z.id}')">Правила</button>
+        <button class="zact" onclick="zoneClicked('${z.id}')">Настроить</button>
         <button class="zact" onclick="toggleZone('${z.id}')">${z.enabled ? 'Выкл' : 'Вкл'}</button>
+        <button class="zact" onclick="exportZone('${z.id}')">Экспорт</button>
         <button class="zact del" onclick="deleteZone('${z.id}')">Удалить</button>
       </div>
     </div>`;
@@ -798,12 +821,39 @@ function openZModal(z, title) {
   document.getElementById('zmEnabled').checked   = z.enabled !== false;
   const cls = new Set(z.classes || []);
   document.querySelectorAll('#zmClasses input').forEach(cb => cb.checked = cls.has(cb.value));
+  renderModalRules(new Set(z.rule_ids || []));
   zmRuleChanged();
   document.getElementById('zmodal').classList.add('open');
 }
+
+function renderModalRules(selected) {
+  const el = document.getElementById('zmRules');
+  if (!allRules.length) {
+    el.innerHTML = '<span class="zb-hint">Правил пока нет. Создайте их в разделе «Управление».</span>';
+    return;
+  }
+  el.innerHTML = allRules.map(r =>
+    `<label class="mchk"><input type="checkbox" value="${r.id}" ${selected.has(r.id) ? 'checked' : ''}>${r.name}</label>`
+  ).join('');
+}
+
+async function loadRules() {
+  try {
+    const d = await (await fetch('/api/rules')).json();
+    allRules = d.rules || [];
+  } catch (e) { console.warn('Не удалось загрузить правила:', e); }
+}
+
+function zoneClicked(id) {
+  // Контекстная настройка зоны по клику прямо на видео (подсветка + popup).
+  selectedZoneId = id;
+  renderZones();
+  editZone(id);
+}
 function closeZModal() {
   document.getElementById('zmodal').classList.remove('open');
-  pendingPoints = null; editingZoneId = null; cancelDraw();
+  pendingPoints = null; editingZoneId = null; selectedZoneId = null;
+  cancelDraw(); renderZones();
 }
 function zmRuleChanged() {
   const r = document.getElementById('zmRule').value;
@@ -813,8 +863,10 @@ function zmRuleChanged() {
 function saveZModal() {
   const name    = document.getElementById('zmName').value.trim() || 'Зона';
   const classes = [...document.querySelectorAll('#zmClasses input:checked')].map(cb => cb.value);
+  const rule_ids = [...document.querySelectorAll('#zmRules input:checked')].map(cb => cb.value);
   const data = {
     name,
+    rule_ids,
     rule:            document.getElementById('zmRule').value,
     dwell_seconds:   parseInt(document.getElementById('zmDwell').value)    || 20,
     max_count:       parseInt(document.getElementById('zmCount').value)    || 3,
@@ -828,8 +880,10 @@ function saveZModal() {
   if (editingZoneId) {
     const z = zones.find(z => z.id === editingZoneId);
     Object.assign(z, data);
+    toast('Зона изменена', 'ok');
   } else {
     zones.push({id: 'z' + Date.now(), points: pendingPoints, ...data});
+    toast('Зона создана', 'ok');
   }
   saveZones(); closeZModal(); renderZones(); renderZoneList();
 }
@@ -842,10 +896,36 @@ function editZone(id) {
 function toggleZone(id) {
   const z = zones.find(z => z.id === id); if (!z) return;
   z.enabled = !z.enabled; saveZones(); renderZones(); renderZoneList();
+  toast(z.enabled ? 'Зона включена' : 'Зона выключена', 'ok');
 }
 function deleteZone(id) {
-  if (!confirm('Удалить зону?')) return;
-  zones = zones.filter(z => z.id !== id); saveZones(); renderZones(); renderZoneList();
+  if (!confirm('Удалить зону? Действие нельзя отменить.')) return;
+  zones = zones.filter(z => z.id !== id);
+  if (selectedZoneId === id) selectedZoneId = null;
+  saveZones(); renderZones(); renderZoneList();
+  toast('Зона удалена', 'ok');
+}
+function exportZone(id) {
+  window.open('/api/zones/export?id=' + encodeURIComponent(id), '_blank');
+}
+function importZoneFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const r = await fetch('/api/zones/import', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+      });
+      const d = await r.json();
+      if (d.ok) { toast('Зона импортирована (выключена)', 'ok'); loadZones(); }
+      else toast('Ошибка импорта: ' + (d.error || ''), 'err');
+    } catch (e) { toast('Файл зоны повреждён', 'err'); }
+    input.value = '';
+  };
+  reader.readAsText(file);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -866,10 +946,17 @@ async function poll() {
       fetch('/api/stream/status').then(r => r.json()),
     ]);
 
-    // FPS и метрики
-    const fps = det.fps || 0;
-    document.getElementById('mfps').textContent     = fps;
-    document.getElementById('fpsBadge').textContent = fps + ' FPS';
+    // FPS и метрики. Показываем «обработка / источник», подсвечиваем падение.
+    const fps    = det.fps || 0;
+    const srcFps = det.source_fps || 0;
+    document.getElementById('mfps').textContent = fps;
+    const fpsBadge = document.getElementById('fpsBadge');
+    fpsBadge.textContent = srcFps ? `${fps} / ${srcFps} FPS` : `${fps} FPS`;
+    // Красная подсветка, если детекция активна и обработка сильно отстаёт
+    const lowFps = det.detection_enabled && srcFps >= 5 && fps < srcFps * 0.6;
+    fpsBadge.style.color       = lowFps ? 'var(--red)' : '';
+    fpsBadge.style.borderColor = lowFps ? 'var(--red)' : '';
+    fpsBadge.title = lowFps ? 'Обработка отстаёт от источника. Увеличьте frame_skip.' : '';
     document.getElementById('suptime').textContent  = fmt_uptime();
 
     // Статус детекции
@@ -927,6 +1014,7 @@ async function poll() {
    ИНИЦИАЛИЗАЦИЯ
 ═══════════════════════════════════════════════════════ */
 loadZones();
+loadRules();
 setInterval(poll, 800);
 poll();
 

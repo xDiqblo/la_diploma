@@ -286,12 +286,13 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
 <body>
 
 <div class="topbar">
-  <div class="logo">АЗС<em> - CAM-01</em></div>
+  <a class="logo" href="/" style="text-decoration:none">АЗС<em> · CAM-01</em></a>
   <nav class="nav">
     <a href="/">МОНИТОР</a>
     <a href="/events">СОБЫТИЯ</a>
-    <a href="/settings">НАСТРОЙКИ</a>
     <a href="/retrain" class="cur">ДООБУЧЕНИЕ</a>
+    <a href="/manage">УПРАВЛЕНИЕ</a>
+    <a href="/settings">НАСТРОЙКИ</a>
   </nav>
 </div>
 
@@ -349,6 +350,7 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
         <div class="tabs">
           <div class="tab active" onclick="switchTab('pending')">Ожидают подтверждения</div>
           <div class="tab" onclick="switchTab('hard')">Трудные примеры</div>
+          <div class="tab" onclick="switchTab('manual')">Ручная разметка</div>
         </div>
 
         <!-- Вкладка: предложения системы -->
@@ -394,6 +396,41 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
                 Система автоматически сохраняет кадры с низкой или нестабильной<br>
                 уверенностью детектора. Примеры появятся здесь.
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Вкладка: ручная разметка (без автоматической детекции) -->
+        <div class="tab-content" id="tab-manual">
+          <div class="pbody">
+            <div style="font-size:13px;color:var(--mut);line-height:1.6;margin-bottom:12px">
+              Источник кадров выбирается на странице «Монитор» (веб-камера, видеофайл или RTSP).
+              Автоматическая детекция для ручной разметки <b style="color:var(--txt)">не требуется</b>.
+              Возьмите текущий кадр, выделите объект рамкой, выберите класс и сохраните в выборку.
+            </div>
+            <div class="toolbar">
+              <button class="btn btn-primary btn-sm" onclick="grabFrame()">Взять текущий кадр</button>
+              <select id="manualClass" class="class-select" style="max-width:200px"></select>
+              <button class="btn btn-success btn-sm" id="manualSaveBtn" onclick="saveManual()" disabled>
+                Сохранить кадр в выборку
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="clearBox()">Сбросить рамку</button>
+              <div class="toolbar-right">
+                <span id="manualStat" style="font-family:var(--mono);font-size:13px;color:var(--mut);align-self:center">
+                  размечено за сессию: 0
+                </span>
+              </div>
+            </div>
+            <div id="manualStage" style="position:relative;display:inline-block;max-width:100%;
+                 border:1px solid var(--bord);border-radius:6px;background:#000;overflow:hidden">
+              <img id="manualImg" style="display:block;max-width:100%;height:auto;user-select:none" alt="">
+              <canvas id="manualCanvas" style="position:absolute;inset:0;cursor:crosshair"></canvas>
+            </div>
+            <div id="manualEmpty" class="gallery-empty" style="padding:40px 20px">
+              Нажмите «Взять текущий кадр», чтобы загрузить кадр из видеопотока для ручной разметки.
+            </div>
+            <div class="tp-log" id="manualHint" style="margin-top:8px">
+              Зажмите левую кнопку мыши на кадре и протяните — появится рамка объекта.
             </div>
           </div>
         </div>
@@ -508,14 +545,153 @@ function showNotif(text, type = 'info') {
 /* ── вкладки ────────────────────────────────────────────── */
 
 function switchTab(name) {
+  const names = ['pending', 'hard', 'manual'];
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const names = ['pending', 'hard'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
 
-  if (name === 'hard') loadHardExamples();
+  if (name === 'hard')   loadHardExamples();
+  if (name === 'manual') initManualClasses();
+}
+
+/* ── ручная разметка (без автоматической детекции) ──────── */
+let manualBox = null;          // {x1,y1,x2,y2} в координатах отображения
+let manualFrameSize = null;    // {w,h} исходного кадра
+let manualDrawing = false;
+let manualStartXY = null;
+let manualSavedCount = 0;
+let manualClassesLoaded = false;
+
+async function initManualClasses() {
+  if (manualClassesLoaded) return;
+  try {
+    const d = await (await fetch('/api/classes')).json();
+    const sel = document.getElementById('manualClass');
+    sel.innerHTML = (d.classes || [])
+      .map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+    manualClassesLoaded = true;
+  } catch (e) { console.warn('Не удалось загрузить классы:', e); }
+}
+
+async function grabFrame() {
+  try {
+    const r = await fetch('/api/retrain/grab_frame?t=' + Date.now());
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      showNotif(d.error || 'Не удалось получить кадр (источник недоступен)', 'err');
+      return;
+    }
+    manualFrameSize = {
+      w: parseInt(r.headers.get('X-Frame-Width')) || 0,
+      h: parseInt(r.headers.get('X-Frame-Height')) || 0,
+    };
+    const blob = await r.blob();
+    const img  = document.getElementById('manualImg');
+    img.onload = () => { resizeCanvas(); };
+    img.src = URL.createObjectURL(blob);
+    document.getElementById('manualEmpty').style.display = 'none';
+    document.getElementById('manualStage').style.display = 'inline-block';
+    clearBox();
+  } catch (e) {
+    showNotif('Ошибка получения кадра: ' + e, 'err');
+  }
+}
+
+function resizeCanvas() {
+  const img = document.getElementById('manualImg');
+  const cv  = document.getElementById('manualCanvas');
+  cv.width  = img.clientWidth;
+  cv.height = img.clientHeight;
+  drawBox();
+}
+window.addEventListener('resize', () => { if (manualFrameSize) resizeCanvas(); });
+
+function canvasPos(e) {
+  const cv = document.getElementById('manualCanvas');
+  const r  = cv.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(cv.width,  e.clientX - r.left)),
+    y: Math.max(0, Math.min(cv.height, e.clientY - r.top)),
+  };
+}
+
+function setupManualCanvas() {
+  const cv = document.getElementById('manualCanvas');
+  cv.addEventListener('mousedown', e => {
+    if (!manualFrameSize) return;
+    manualDrawing = true;
+    manualStartXY = canvasPos(e);
+    manualBox = null;
+  });
+  cv.addEventListener('mousemove', e => {
+    if (!manualDrawing) return;
+    const p = canvasPos(e);
+    manualBox = {
+      x1: Math.min(manualStartXY.x, p.x), y1: Math.min(manualStartXY.y, p.y),
+      x2: Math.max(manualStartXY.x, p.x), y2: Math.max(manualStartXY.y, p.y),
+    };
+    drawBox();
+  });
+  cv.addEventListener('mouseup', () => {
+    manualDrawing = false;
+    const ok = manualBox && (manualBox.x2 - manualBox.x1) > 4 && (manualBox.y2 - manualBox.y1) > 4;
+    document.getElementById('manualSaveBtn').disabled = !ok;
+  });
+}
+
+function drawBox() {
+  const cv  = document.getElementById('manualCanvas');
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (!manualBox) return;
+  ctx.strokeStyle = '#00e676';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(manualBox.x1, manualBox.y1,
+                 manualBox.x2 - manualBox.x1, manualBox.y2 - manualBox.y1);
+  ctx.fillStyle = 'rgba(0,230,118,.15)';
+  ctx.fillRect(manualBox.x1, manualBox.y1,
+               manualBox.x2 - manualBox.x1, manualBox.y2 - manualBox.y1);
+}
+
+function clearBox() {
+  manualBox = null;
+  document.getElementById('manualSaveBtn').disabled = true;
+  const cv = document.getElementById('manualCanvas');
+  if (cv.getContext) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+}
+
+async function saveManual() {
+  if (!manualBox || !manualFrameSize) return;
+  const img = document.getElementById('manualImg');
+  // Перевод координат рамки из пикселей отображения в пиксели исходного кадра
+  const sx = manualFrameSize.w / img.clientWidth;
+  const sy = manualFrameSize.h / img.clientHeight;
+  const bbox = [
+    Math.round(manualBox.x1 * sx), Math.round(manualBox.y1 * sy),
+    Math.round(manualBox.x2 * sx), Math.round(manualBox.y2 * sy),
+  ];
+  const cls = document.getElementById('manualClass').value;
+  if (!cls) { showNotif('Выберите класс объекта', 'err'); return; }
+  try {
+    const r = await fetch('/api/retrain/manual_save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bbox, class: cls }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      manualSavedCount++;
+      document.getElementById('manualStat').textContent = 'размечено за сессию: ' + manualSavedCount;
+      showNotif('Кадр добавлен в обучающую выборку', 'ok');
+      clearBox();
+      loadStatus();
+    } else {
+      showNotif('Ошибка: ' + (d.error || 'не удалось сохранить разметку'), 'err');
+    }
+  } catch (e) {
+    showNotif('Ошибка сохранения разметки: ' + e, 'err');
+  }
 }
 
 /* ── загрузка данных ────────────────────────────────────── */
@@ -884,6 +1060,8 @@ async function applyVersion(filename) {
 /* ── автообновление ─────────────────────────────────────── */
 
 async function init() {
+  document.getElementById('manualStage').style.display = 'none';
+  setupManualCanvas();
   await loadStatus();
   await loadPending();
   await loadVersions();

@@ -154,10 +154,12 @@ a.clip:hover{text-decoration:underline}
 <body>
 
 <div class="topbar">
-  <div class="logo">АЗС<em> · CAM-01</em></div>
+  <a class="logo" href="/" style="text-decoration:none">АЗС<em> · CAM-01</em></a>
   <nav class="nav">
     <a href="/">МОНИТОР</a>
     <a href="/events" class="cur">СОБЫТИЯ</a>
+    <a href="/retrain">ДООБУЧЕНИЕ</a>
+    <a href="/manage">УПРАВЛЕНИЕ</a>
     <a href="/settings">НАСТРОЙКИ</a>
   </nav>
 </div>
@@ -190,7 +192,7 @@ a.clip:hover{text-decoration:underline}
       <select id="f_zone"><option value="">Все зоны</option></select>
     </div>
     <button class="btn btn-filter" onclick="load(1)">Применить</button>
-    <button class="btn btn-clear"  onclick="clearAll()">🗑 Очистить</button>
+    <button class="btn btn-clear"  onclick="clearAll()">Очистить</button>
     <div class="total" id="total">Событий: —</div>
   </div>
 

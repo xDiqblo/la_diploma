@@ -80,6 +80,7 @@ class ZoneManager:
         self.cooldown_default = cooldown_default
         self._zones = []
         self._state = {}          # zone_id -> состояние (счётчики, таймеры)
+        self._membership = {}     # zone_id -> {class_name: count} (для правил тревог)
         self.update_zones(zones or [])
 
     # ─── управление списком зон ──────────────────────────────────────────────
@@ -146,6 +147,7 @@ class ZoneManager:
             return []
 
         triggered = []
+        membership = {}
 
         for z in self._zones:
             st = self._state[z['id']]
@@ -174,6 +176,13 @@ class ZoneManager:
             st['count'] = len(inside_objs)
             st['visitors'].update(inside_ids)
 
+            # Состав зоны по классам — для оценки правил тревог (rules.py)
+            cls_counts = {}
+            for o in inside_objs:
+                cn = o.get('class')
+                cls_counts[cn] = cls_counts.get(cn, 0) + 1
+            membership[z['id']] = cls_counts
+
             # обновляем тайминги входа/выхода для правила «задержка»
             for tid in inside_ids:
                 st['enter_time'].setdefault(tid, now)
@@ -186,7 +195,18 @@ class ZoneManager:
             if ev:
                 triggered.append(ev)
 
+        self._membership = membership
         return triggered
+
+    def get_membership(self) -> dict:
+        """{zone_id: {class_name: count}} — состав зон в последнем кадре."""
+        return dict(self._membership)
+
+    def zone_name(self, zone_id: str) -> str:
+        for z in self._zones:
+            if z['id'] == zone_id:
+                return z['name']
+        return zone_id
 
     def _apply_rule(self, z, st, inside_objs, inside_ids, now):
         """Проверяет правило конкретной зоны и при срабатывании возвращает тревогу."""

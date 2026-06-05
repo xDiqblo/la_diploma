@@ -1,5 +1,39 @@
-/test_videos/test_video1.mp4
-/test_videos/test_video2.mp4
-/test_videos/test_video3.mp4
+# Виртуальные окружения
 /venv/
-/data/detections/
+/env/
+/.venv/
+
+# Python-кэш
+__pycache__/
+*.pyc
+*.pyo
+
+# Тестовые видео
+/test_videos/
+
+# Среда разработки
+/.idea/
+/.vscode/
+
+# Данные времени выполнения (создаются приложением)
+/data/events.db
+/data/uploads/
+/data/hard_examples/
+/data/pending_labels/
+/data/confirmed_labels/
+/data/runs/
+/data/tmp_train_dataset/
+/detections/
+/logs/*.log
+
+# Конфигурация классов и правил (создаётся оператором)
+/config/
+/zones/
+
+# Дообученные веса
+/model/versions/
+/model/best.pt
+
+# Системные файлы
+.DS_Store
+Thumbs.db

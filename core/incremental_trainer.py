@@ -446,16 +446,6 @@ class IncrementalTrainer:
       - Заменяет модель «на горячую» или откатывает при деградации
     """
 
-    # Маппинг имён классов в индексы (должен совпадать с dataset.yaml)
-    CLASS_MAP = {
-        'person':     0,
-        'car':        2,
-        'bus':        5,
-        'truck':      7,
-        'motorcycle': 3,
-        'bicycle':    1,
-    }
-
     def __init__(self, model_dir: str = 'model'):
         self.model_dir  = Path(model_dir)
         self._lock      = threading.Lock()
@@ -528,6 +518,49 @@ class IncrementalTrainer:
     def get_confirmed_count(self) -> int:
         """Число подтверждённых примеров, готовых к дообучению."""
         return len(list(DIR_CONFIRMED.glob('*.jpg')))
+
+    def add_manual_example(self, image_bgr, bbox: list, class_name: str) -> dict:
+        """
+        Сохраняет вручную размеченный кадр сразу в confirmed_labels/.
+        bbox — [x1, y1, x2, y2] в пикселях исходного кадра.
+        Используется ручным отбором кадров (без автоматической детекции).
+        """
+        import cv2
+
+        if image_bgr is None:
+            return {'ok': False, 'error': 'Кадр отсутствует'}
+        if not class_name:
+            return {'ok': False, 'error': 'Не выбран класс объекта'}
+        if not bbox or len(bbox) != 4:
+            return {'ok': False, 'error': 'Некорректная рамка'}
+
+        x1, y1, x2, y2 = [int(v) for v in bbox]
+        if (x2 - x1) < 3 or (y2 - y1) < 3:
+            return {'ok': False, 'error': 'Слишком маленькая рамка'}
+
+        fname    = f'{_ts()}_manual_{class_name}.jpg'
+        out_path = DIR_CONFIRMED / fname
+        try:
+            ok, buf = cv2.imencode('.jpg', image_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            if not ok:
+                return {'ok': False, 'error': 'Ошибка кодирования кадра'}
+            with open(out_path, 'wb') as fp:
+                fp.write(buf.tobytes())
+            _save_meta(out_path, {
+                'timestamp':       datetime.now().isoformat(),
+                'source':          'manual',
+                'confirmed_class': class_name,
+                'suggested_class': class_name,
+                'bbox':            [x1, y1, x2, y2],
+                'status':          'confirmed',
+                'confirmed_at':    datetime.now().isoformat(),
+            })
+            logger.info('Ручная разметка сохранена: %s (класс=%s)', fname, class_name)
+            return {'ok': True, 'filename': fname,
+                    'confirmed_total': self.get_confirmed_count()}
+        except Exception as exc:
+            logger.error('Ошибка сохранения ручной разметки: %s', exc)
+            return {'ok': False, 'error': str(exc)}
 
     def start_training(self, on_ready=None) -> bool:
         """
@@ -688,10 +721,13 @@ class IncrementalTrainer:
         train_files = []
         val_files   = []
 
+        from core import classes as class_registry
+        name_to_id = class_registry.name_to_id()
+
         for img_path in confirmed_imgs:
             meta = _load_meta(img_path)
             cls_name = meta.get('confirmed_class') or meta.get('suggested_class', '')
-            cls_id   = self.CLASS_MAP.get(cls_name)
+            cls_id   = name_to_id.get(cls_name)
 
             if cls_id is None:
                 logger.warning('Неизвестный класс "%s", пропуск: %s', cls_name, img_path.name)
@@ -739,22 +775,30 @@ class IncrementalTrainer:
         return train_files, val_files
 
     def _write_dataset_yaml(self, yaml_path: Path, tmp_dir: Path):
-        """Создаёт dataset.yaml для YOLO-тренировки."""
-        content = (
-            f"path: {tmp_dir.resolve()}\n"
-            f"train: images/train\n"
-            f"val: images/val\n"
-            f"nc: 8\n"
-            f"names:\n"
-            f"  0: person\n"
-            f"  1: bicycle\n"
-            f"  2: car\n"
-            f"  3: motorcycle\n"
-            f"  5: bus\n"
-            f"  7: truck\n"
-        )
-        with open(yaml_path, 'w') as f:
-            f.write(content)
+        """
+        Создаёт dataset.yaml для YOLO-тренировки.
+        Имена классов берутся из общего реестра (базовые COCO + пользовательские),
+        поэтому новые классы автоматически попадают в обучение. Базовые индексы
+        сохраняются (person=0, car=2, ...), пользовательские идут с 80 — чтобы
+        не ломать нумерацию существующих классов. nc = max(id)+1.
+        """
+        from core import classes as class_registry
+        all_classes = class_registry.list_classes()
+        id_to_name  = {c['id']: c['name'] for c in all_classes}
+        nc = max(id_to_name) + 1 if id_to_name else 8
+
+        lines = [
+            f"path: {tmp_dir.resolve()}",
+            "train: images/train",
+            "val: images/val",
+            f"nc: {nc}",
+            "names:",
+        ]
+        for cid in sorted(id_to_name):
+            lines.append(f"  {cid}: {id_to_name[cid]}")
+
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines) + '\n')
 
     def _run_yolo_training(self, yaml_path: Path) -> Path:
         """
