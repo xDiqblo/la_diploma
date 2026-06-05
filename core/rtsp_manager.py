@@ -1,15 +1,12 @@
 """
 rtsp_manager.py — управление видеопотоком с автоматическим восстановлением.
 
-Исправленные баги:
-  - change_source() теперь гарантированно прерывает внутренний цикл чтения
-    через флаг _change_requested, а не сравнение строк (старый код не работал)
-  - _try_open() теперь реагирует на stop()/change_source() во время ожидания
-    первого кадра — не висит 10 сек при остановке сервера
-  - stop() дожидается завершения потока с разумным таймаутом и потом делает
-    принудительный release() VideoCapture — поток больше не продолжает
-    тянуть RTSP после Ctrl+C
-  - Видеофайл зацикливается только если не было смены источника
+Ключевые изменения:
+  - Пустой источник ('') означает «ничего не подключать» — стрим ждёт.
+  - change_source() прерывает cap.read() немедленно через release().
+  - stop() ждёт завершения потока с таймаутом.
+  - Видеофайл зацикливается только если источник не менялся.
+  - read_seq() позволяет потребителю обрабатывать только новые кадры.
 """
 
 import logging
@@ -21,25 +18,25 @@ import cv2
 
 logger = logging.getLogger(__name__)
 
-MAX_RECONNECT_DELAY  = 30
-FIRST_FRAME_TIMEOUT  = 8    # сек — сколько ждём первый кадр при подключении
+MAX_RECONNECT_DELAY = 30
+FIRST_FRAME_TIMEOUT = 8  # сек
 
 
 class RTSPManager:
-
+    STATUS_IDLE         = 'idle'
     STATUS_CONNECTING   = 'connecting'
     STATUS_CONNECTED    = 'connected'
     STATUS_RECONNECTING = 'reconnecting'
     STATUS_STOPPED      = 'stopped'
 
-    def __init__(self, source: str):
+    def __init__(self, source: str = ''):
         self._source_str = source
 
         self._cap: Optional[cv2.VideoCapture] = None
-        self._cap_lock   = threading.Lock()      # защита _cap от race condition
+        self._cap_lock   = threading.Lock()
 
         self._last_frame = None
-        self._frame_seq  = 0          # увеличивается с каждым новым кадром
+        self._frame_seq  = 0
         self._frame_lock = threading.Lock()
 
         self._status         = self.STATUS_STOPPED
@@ -48,14 +45,10 @@ class RTSPManager:
         self._connected_at: Optional[float] = None
         self.stream_fps: float = 25.0
 
-        # Флаг «живой»
         self._running = False
         self._thread: Optional[threading.Thread] = None
-
-        # Событие — будит поток из любого sleep/wait немедленно
         self._wakeup = threading.Event()
 
-        # Флаг смены источника — основной механизм прерывания цикла чтения
         self._change_requested = False
         self._source_lock = threading.Lock()
 
@@ -72,18 +65,11 @@ class RTSPManager:
             target=self._loop, daemon=True, name='rtsp-capture'
         )
         self._thread.start()
-        logger.info('RTSPManager: запущен [%s]', self._source_str)
+        logger.info('RTSPManager: запущен [%s]', self._source_str or '<нет источника>')
 
     def stop(self):
-        """
-        Останавливает поток и освобождает VideoCapture.
-        Гарантирует, что после возврата никаких сетевых соединений нет.
-        """
         self._running = False
-        self._wakeup.set()          # прерываем любой sleep/wait в потоке
-
-        # Принудительно освобождаем cap — это прерывает блокирующий cap.read()
-        # в потоке (read вернёт False немедленно после release)
+        self._wakeup.set()
         with self._cap_lock:
             if self._cap is not None:
                 try:
@@ -91,43 +77,32 @@ class RTSPManager:
                 except Exception:
                     pass
                 self._cap = None
-
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=6)
             if self._thread.is_alive():
                 logger.warning('RTSPManager: поток не завершился за 6 сек')
-
         self._status = self.STATUS_STOPPED
         logger.info('RTSPManager: остановлен')
 
     def read(self) -> Optional[any]:
-        """Последний кадр (BGR numpy) или None — не блокирует."""
         with self._frame_lock:
             return self._last_frame.copy() if self._last_frame is not None else None
 
     def read_seq(self):
-        """
-        Возвращает (seq, frame): порядковый номер кадра и сам кадр.
-        Позволяет потребителю обрабатывать только новые кадры и не гонять
-        YOLO по одному и тому же кадру многократно.
-        """
+        """Возвращает (seq, frame) — для пропуска дублирующихся кадров."""
         with self._frame_lock:
             if self._last_frame is None:
                 return self._frame_seq, None
             return self._frame_seq, self._last_frame.copy()
 
     def change_source(self, new_source: str):
-        """
-        Горячая замена источника. Текущее соединение рвётся немедленно,
-        поток переподключается к новому источнику.
-        """
+        """Горячая замена источника. '' — остановить поток без переподключения."""
         with self._source_lock:
             if self._source_str == new_source:
                 return
             self._source_str       = new_source
             self._change_requested = True
 
-        # Освобождаем текущий cap — прерывает блокирующий cap.read()
         with self._cap_lock:
             if self._cap is not None:
                 try:
@@ -136,8 +111,13 @@ class RTSPManager:
                     pass
                 self._cap = None
 
-        self._wakeup.set()   # будим поток если он спит между попытками
-        logger.info('RTSPManager: источник изменён -> %s', new_source)
+        # Сбрасываем последний кадр при смене источника
+        with self._frame_lock:
+            self._last_frame = None
+            self._frame_seq  = 0
+
+        self._wakeup.set()
+        logger.info('RTSPManager: источник изменён -> %s', new_source or '<нет>')
 
     def get_status(self) -> dict:
         uptime = None
@@ -155,8 +135,11 @@ class RTSPManager:
     def is_connected(self) -> bool:
         return self._status == self.STATUS_CONNECTED
 
+    def has_source(self) -> bool:
+        return bool(self._source_str and self._source_str.strip())
+
     # ------------------------------------------------------------------
-    # Основной цикл (в отдельном потоке)
+    # Основной цикл
     # ------------------------------------------------------------------
 
     def _loop(self):
@@ -165,10 +148,18 @@ class RTSPManager:
         while self._running:
             self._wakeup.clear()
 
-            # Снимаем флаг смены источника и читаем текущий источник атомарно
             with self._source_lock:
                 self._change_requested = False
                 source_str = self._source_str
+
+            # Нет источника — ждём в состоянии idle
+            if not source_str or not source_str.strip():
+                self._status = self.STATUS_IDLE
+                self._error_msg = ''
+                self._reconnect_attempts = 0
+                reconnect_delay = 1.0
+                self._wakeup.wait(timeout=1.0)
+                continue
 
             source = _parse_source(source_str)
             self._status = self.STATUS_CONNECTING
@@ -177,7 +168,6 @@ class RTSPManager:
             cap = self._try_open(source)
 
             if cap is None:
-                # Подключиться не удалось
                 self._reconnect_attempts += 1
                 self._status    = self.STATUS_RECONNECTING
                 self._error_msg = f'Нет сигнала: {source_str}'
@@ -187,36 +177,26 @@ class RTSPManager:
                 reconnect_delay = min(reconnect_delay * 2, MAX_RECONNECT_DELAY)
                 continue
 
-            # Подключились
             with self._cap_lock:
-                # Если stop() или change_source() уже вызвали release — cap
-                # снаружи уже освобождён, выходим
                 if not self._running or self._change_requested:
                     cap.release()
                     continue
                 self._cap = cap
 
             raw_fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-            # Защита от некорректного значения FPS у файла/потока
-            self.stream_fps         = raw_fps if 1.0 <= raw_fps <= 120.0 else 25.0
-            self._status            = self.STATUS_CONNECTED
-            self._connected_at      = time.time()
-            self._error_msg         = ''
-            reconnect_delay         = 1.0
+            self.stream_fps     = raw_fps if 1.0 <= raw_fps <= 120.0 else 25.0
+            self._status        = self.STATUS_CONNECTED
+            self._connected_at  = time.time()
+            self._error_msg     = ''
+            reconnect_delay     = 1.0
             self._reconnect_attempts = 0
             is_file = _is_file(source_str)
 
-            # Интервал между кадрами для пейсинга видеофайлов.
-            # Камеры (USB/RTSP) сами выдают кадры в реальном времени, поэтому
-            # для них пейсинг не нужен. Для файла OpenCV отдаёт кадры так быстро,
-            # как успевает их декодировать — без пейсинга видео идёт «в ускоренном
-            # режиме». Здесь привязываем чтение к собственному FPS файла.
             frame_interval = 1.0 / self.stream_fps if (is_file and self.stream_fps > 0) else 0.0
             next_frame_t   = time.time()
-            slow_logged    = 0.0   # антиспам для предупреждений о падении FPS
+            slow_logged    = 0.0
 
-            logger.info('RTSPManager: подключено FPS=%.1f [%s] (пейсинг=%s)',
-                        self.stream_fps, source_str, 'вкл' if is_file else 'выкл')
+            logger.info('RTSPManager: подключено FPS=%.1f [%s]', self.stream_fps, source_str)
 
             consecutive_failures = 0
             while self._running and not self._change_requested:
@@ -224,8 +204,6 @@ class RTSPManager:
 
                 if not ret:
                     if is_file:
-                        # Видеофайл закончился — зацикливаем,
-                        # но только если источник не менялся
                         if not self._change_requested:
                             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                             next_frame_t = time.time()
@@ -246,27 +224,18 @@ class RTSPManager:
                     self._last_frame = frame
                     self._frame_seq += 1
 
-                # Пейсинг воспроизведения видеофайла под его собственный FPS.
-                # Используем абсолютную метку времени следующего кадра, чтобы
-                # ошибка не накапливалась. Прерываемся через _wakeup при
-                # остановке/смене источника.
                 if frame_interval > 0.0:
                     next_frame_t += frame_interval
                     delay = next_frame_t - time.time()
                     if delay > 0:
                         self._wakeup.wait(timeout=delay)
                     elif delay < -1.0:
-                        # Декодер отстаёт более чем на секунду — система не
-                        # успевает обрабатывать кадры в реальном времени.
                         now = time.time()
                         if now - slow_logged > 10.0:
-                            logger.warning(
-                                'RTSPManager: обработка отстаёт от FPS файла '
-                                '(%.1f FPS), кадры могут пропускаться', self.stream_fps)
+                            logger.warning('RTSPManager: обработка отстаёт от FPS файла')
                             slow_logged = now
-                        next_frame_t = now   # сбрасываем дрейф
+                        next_frame_t = now
 
-            # Выходим из цикла чтения — освобождаем cap
             with self._cap_lock:
                 if self._cap is cap:
                     try:
@@ -277,16 +246,7 @@ class RTSPManager:
 
         self._status = self.STATUS_STOPPED
 
-    # ------------------------------------------------------------------
-    # Вспомогательные методы
-    # ------------------------------------------------------------------
-
     def _try_open(self, source) -> Optional[cv2.VideoCapture]:
-        """
-        Открывает VideoCapture и ждёт первый кадр.
-        Прерывается мгновенно если stop() или change_source() вызваны
-        во время ожидания.
-        """
         try:
             if isinstance(source, str) and source.lower().startswith('rtsp://'):
                 cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
@@ -300,11 +260,9 @@ class RTSPManager:
 
             t0 = time.time()
             while time.time() - t0 < FIRST_FRAME_TIMEOUT:
-                # Прерываемся если сервер останавливается или источник сменился
                 if not self._running or self._change_requested:
                     cap.release()
                     return None
-
                 ret, _ = cap.read()
                 if ret:
                     if _is_file(self._source_str):
@@ -314,18 +272,16 @@ class RTSPManager:
 
             cap.release()
             return None
-
         except Exception as exc:
             logger.error('RTSPManager: ошибка открытия: %s', exc)
             return None
 
 
 # ------------------------------------------------------------------
-# Утилиты (модульного уровня — не засоряют класс)
+# Утилиты
 # ------------------------------------------------------------------
 
 def _parse_source(src: str):
-    """'0' -> int(0), иначе строка."""
     try:
         return int(src)
     except (ValueError, TypeError):
@@ -333,10 +289,11 @@ def _parse_source(src: str):
 
 
 def _is_file(src: str) -> bool:
-    """True если источник — локальный файл (не камера и не RTSP)."""
+    if not src:
+        return False
     try:
         int(src)
-        return False   # целое число = устройство
+        return False
     except (ValueError, TypeError):
         pass
     low = src.lower()
@@ -345,10 +302,6 @@ def _is_file(src: str) -> bool:
 
 
 def probe_source(url: str, timeout: float = 5.0) -> dict:
-    """
-    Быстрая проверка доступности источника.
-    Возвращает {'ok': bool, 'fps': float|None, 'error': str}.
-    """
     try:
         parsed = _parse_source(url)
         if isinstance(parsed, str) and parsed.lower().startswith('rtsp://'):
@@ -360,8 +313,8 @@ def probe_source(url: str, timeout: float = 5.0) -> dict:
             cap.release()
             return {'ok': False, 'fps': None, 'error': 'Не удалось открыть источник'}
 
-        t0  = time.time()
-        ok  = False
+        t0 = time.time()
+        ok = False
         fps = None
         while time.time() - t0 < timeout:
             ret, _ = cap.read()
@@ -371,7 +324,6 @@ def probe_source(url: str, timeout: float = 5.0) -> dict:
                 break
             time.sleep(0.05)
         cap.release()
-        return {'ok': ok, 'fps': fps,
-                'error': '' if ok else 'Нет кадров от источника'}
+        return {'ok': ok, 'fps': fps, 'error': '' if ok else 'Нет кадров от источника'}
     except Exception as exc:
         return {'ok': False, 'fps': None, 'error': str(exc)}
