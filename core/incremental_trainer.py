@@ -783,9 +783,8 @@ class IncrementalTrainer:
         не ломать нумерацию существующих классов. nc = max(id)+1.
         """
         from core import classes as class_registry
-        all_classes = class_registry.list_classes()
-        id_to_name  = {c['id']: c['name'] for c in all_classes}
-        nc = max(id_to_name) + 1 if id_to_name else 8
+        # Непрерывный список имён 0..nc-1 (len(names) == nc — требование ultralytics).
+        id_to_name, nc = class_registry.training_names()
 
         lines = [
             f"path: {tmp_dir.resolve()}",
@@ -794,7 +793,7 @@ class IncrementalTrainer:
             f"nc: {nc}",
             "names:",
         ]
-        for cid in sorted(id_to_name):
+        for cid in range(nc):
             lines.append(f"  {cid}: {id_to_name[cid]}")
 
         with open(yaml_path, 'w', encoding='utf-8') as f:

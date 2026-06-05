@@ -38,6 +38,30 @@ BASE_CLASSES = [
     {'id': 7, 'name': 'truck',      'color': '#ff6020', 'custom': False},
 ]
 
+# Полный список 80 классов COCO (индексы 0..79) — в точности соответствует
+# предобученной модели yolov8n.pt. Нужен для формирования dataset.yaml при
+# дообучении: чтобы сохранить уже известные классы и добавить пользовательские
+# (с индекса 80), nc и длина names обязаны совпадать.
+COCO80 = {
+    0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane',
+    5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light',
+    10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench',
+    14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow',
+    20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack',
+    25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee',
+    30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite',
+    34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard',
+    38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork',
+    43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple',
+    48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog',
+    53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch',
+    58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv',
+    63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone',
+    68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator',
+    73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear',
+    78: 'hair drier', 79: 'toothbrush',
+}
+
 _lock = threading.Lock()
 
 
@@ -152,3 +176,22 @@ def name_to_id() -> dict:
 def color_map() -> dict:
     """{имя_класса: hex_цвет} — используется детектором для раскраски рамок."""
     return {c['name']: c['color'] for c in list_classes()}
+
+
+def training_names() -> tuple[dict, int]:
+    """
+    Возвращает (names, nc) для dataset.yaml дообучения.
+
+    names — непрерывный словарь индексов 0..nc-1 (без пропусков), иначе
+    ultralytics падает с ошибкой «'names' length != 'nc'». Базовые 80 классов
+    COCO сохраняются на своих местах (person=0, car=2, ...), пользовательские
+    добавляются с индекса 80. Пропуски (если пользовательский id не подряд)
+    заполняются заглушками, чтобы длина строго совпадала с nc.
+    """
+    names = dict(COCO80)
+    for c in _read_custom():
+        names[int(c['id'])] = c['name']
+    nc = max(names) + 1
+    for i in range(nc):
+        names.setdefault(i, f'class_{i}')   # заполняем возможные пропуски
+    return names, nc

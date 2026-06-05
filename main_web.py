@@ -343,9 +343,19 @@ def capture_loop():
 
     while running:
         seq, frame = rtsp_manager.read_seq()
+        # Источник не выбран / не подключён — сбрасываем кадр, чтобы плеер
+        # показал заглушку «нет источника», а не застывший последний кадр.
+        if frame is None:
+            if frame_buffer is not None:
+                frame_buffer = None
+            current_detections = []
+            current_class_counts = {}
+            detection_fps = 0
+            time.sleep(0.03)
+            continue
         # Обрабатываем только новые кадры — иначе YOLO гоняется по одному и тому
         # же кадру многократно, что зря греет CPU и искажает счётчик FPS.
-        if frame is None or seq == last_seq:
+        if seq == last_seq:
             time.sleep(0.005)
             continue
         last_seq = seq
@@ -426,22 +436,61 @@ app.mount('/static',     StaticFiles(directory='static'),     name='static')
 # MJPEG стрим
 # ---------------------------------------------------------------------------
 
+import numpy as np
+
+_placeholder_bytes: bytes | None = None
+
+
+def _placeholder_jpeg(status: str = '') -> bytes:
+    """
+    Тёмный кадр-заставка (без текста — OpenCV не умеет кириллицу).
+    Понятное сообщение о статусе показывает HTML-оверлей поверх плеера
+    (см. index.html), поэтому здесь нужен лишь нейтральный фон.
+    """
+    global _placeholder_bytes
+    if _placeholder_bytes is not None:
+        return _placeholder_bytes
+    img = np.full((360, 640, 3), (18, 14, 10), dtype=np.uint8)
+    cv2.rectangle(img, (1, 1), (638, 358), (40, 56, 78), 1)
+    # простая «камера выключена»: круг с диагональю по центру
+    cv2.circle(img, (320, 175), 34, (70, 90, 120), 2)
+    cv2.line(img, (298, 153), (342, 197), (70, 90, 120), 2)
+    ok, jpeg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    _placeholder_bytes = jpeg.tobytes() if ok else b''
+    return _placeholder_bytes
+
+
 def _mjpeg_gen():
     """
-    Генератор MJPEG. Спит не дольше 40 мс между кадрами,
-    чтобы не нагружать CPU при статичном frame_buffer.
+    Постоянный генератор MJPEG: одно соединение на всё время работы страницы.
+    Если кадра нет (источник не выбран/подключается) — отдаёт заставку с текстом.
+    Благодаря этому смена источника применяется БЕЗ перезагрузки страницы:
+    то же соединение плавно переходит с заставки на реальные кадры.
     """
-    prev_id = id(None)
+    prev_id = None
+    last_placeholder = 0.0
     while running:
         fb = frame_buffer
-        if fb is None or id(fb) == prev_id:
-            time.sleep(0.02)
+        if fb is not None:
+            if id(fb) != prev_id:
+                prev_id = id(fb)
+                ok, jpeg = cv2.imencode('.jpg', fb, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                if ok:
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'
+                           + jpeg.tobytes() + b'\r\n')
+            else:
+                time.sleep(0.02)
             continue
-        prev_id = id(fb)
-        ok, jpeg = cv2.imencode('.jpg', fb, [cv2.IMWRITE_JPEG_QUALITY, 75])
-        if ok:
-            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'
-                   + jpeg.tobytes() + b'\r\n')
+        # Кадра нет — периодически отдаём заставку (держим соединение живым)
+        now = time.time()
+        if now - last_placeholder > 0.4:
+            last_placeholder = now
+            prev_id = None
+            data = _placeholder_jpeg(rtsp_manager.get_status().get('status', 'no_source'))
+            if data:
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + data + b'\r\n')
+        else:
+            time.sleep(0.05)
 
 
 @app.get('/video_feed')
@@ -499,6 +548,10 @@ async def api_detections():
 
 @app.post('/api/detection/start')
 async def api_start():
+    # Нет источника — детектировать нечего. Возвращаем понятную причину.
+    if rtsp_manager.get_status().get('status') == RTSPManager.STATUS_NO_SOURCE:
+        return JSONResponse(
+            {'status': 'error', 'error': 'Источник видео не выбран'}, 400)
     _alerted_appear.clear()
     _alerted_long.clear()
     _last_global_event.clear()
@@ -539,14 +592,24 @@ async def api_stream_change(request: Request):
     """
     global SETTINGS
     data       = await request.json()
-    new_source = data.get('source', '').strip()
-    if not new_source:
-        return JSONResponse({'ok': False, 'error': 'source не задан'}, 400)
+    new_source = (data.get('source') or '').strip()
+    # Пустой source допустим — означает «отключить источник» (нет видео).
 
     rtsp_manager.change_source(new_source)
     SETTINGS = config.save_settings({'video_source': new_source})
-    logger.info('Источник видео изменён: %s', new_source)
+    logger.info('Источник видео изменён: %s', new_source or '(нет источника)')
     return {'ok': True, 'source': new_source}
+
+
+@app.post('/api/stream/disconnect')
+async def api_stream_disconnect():
+    """Отключает текущий источник видео (переводит плеер в режим «нет источника»)."""
+    global SETTINGS
+    detector.set_enabled(False)
+    rtsp_manager.change_source('')
+    SETTINGS = config.save_settings({'video_source': ''})
+    logger.info('Источник видео отключён')
+    return {'ok': True, 'source': ''}
 
 
 @app.post('/api/stream/upload')
@@ -819,9 +882,10 @@ async def api_save_settings(request: Request):
     zone_manager.update_zones(zone_store.load_all())
     zone_manager.cooldown_default = SETTINGS.get('event_cooldown_seconds', 15)
 
-    # Смена источника через настройки (если поле изменилось)
+    # Смена источника через настройки (если поле изменилось).
+    # Пустое значение допустимо — означает отключение источника.
     new_src = SETTINGS.get('video_source', '')
-    if new_src and new_src != rtsp_manager.get_status()['source']:
+    if new_src != rtsp_manager.get_status()['source']:
         rtsp_manager.change_source(new_src)
 
     return {'status': 'saved', 'settings': SETTINGS}
