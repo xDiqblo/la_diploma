@@ -32,21 +32,14 @@ DEFAULT_SETTINGS = {
     "global_long_stay_alerts": False, # тревога на долгое нахождение во всём кадре
     "event_cooldown_seconds": 15,     # антидребезг: мин. пауза между однотипными тревогами
     "save_screenshots": True,
-    "save_video_clips": True,
-    "clip_pre_seconds": 10,
-    "clip_post_seconds": 10,
     # ── зоны срабатывания ─────────────────────────────────────────────────────
     # Список зон. Каждая зона — многоугольник в относительных координатах (0..1),
     # чтобы не зависеть от разрешения камеры. У каждой зоны свои правила, и по
     # каждой считаются ОТДЕЛЬНЫЕ метрики/отчётность. Зоны рисуются на плеере
     # (страница «Монитор»). Подробная структура зоны описана в core/zones.py.
     "zones": [],
-    # ── Telegram ──────────────────────────────────────────────────────────────
-    "telegram_enabled": False,
-    "telegram_token": "",
-    "telegram_chat_id": "",
     # ── облачная синхронизация ────────────────────────────────────────────────
-    "cloud_sync_enabled": False,
+    "cloud_sync_enabled": True,
     "cloud_url": "http://localhost:8001",
     "cloud_api_key": "secret-key-123",
     # ── отправка тревог по email (см. core/email_notify.py и core/rules.py) ────

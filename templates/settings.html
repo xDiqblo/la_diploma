@@ -164,38 +164,9 @@ input[type=range]::-webkit-slider-thumb{
 
       <div class="field">
         <label>Детектируемые классы</label>
-        <div class="checks" id="class_checks">
-          <label class="chk-label" data-cls="car">
-            <input type="checkbox" value="car">
-            <div class="chk-dot"></div>
-            Автомобиль
-          </label>
-          <label class="chk-label" data-cls="bus">
-            <input type="checkbox" value="bus">
-            <div class="chk-dot"></div>
-            Автобус
-          </label>
-          <label class="chk-label" data-cls="truck">
-            <input type="checkbox" value="truck">
-            <div class="chk-dot"></div>
-            Грузовик
-          </label>
-          <label class="chk-label" data-cls="person">
-            <input type="checkbox" value="person">
-            <div class="chk-dot"></div>
-            Человек
-          </label>
-          <label class="chk-label" data-cls="motorcycle">
-            <input type="checkbox" value="motorcycle">
-            <div class="chk-dot"></div>
-            Мотоцикл
-          </label>
-          <label class="chk-label" data-cls="bicycle">
-            <input type="checkbox" value="bicycle">
-            <div class="chk-dot"></div>
-            Велосипед
-          </label>
-        </div>
+        <div class="checks" id="class_checks"></div>
+        <div class="hint">Список включает базовые классы и пользовательские,
+          созданные на странице «Управление».</div>
       </div>
 
       <div class="field">
@@ -248,48 +219,7 @@ input[type=range]::-webkit-slider-thumb{
           <label>Сохранять скриншоты</label>
           <label class="toggle"><input type="checkbox" id="save_screenshots"><div class="tslider"></div></label>
         </div>
-      </div>
-      <div class="field">
-        <div class="toggle-row">
-          <label>Сохранять видеофрагменты</label>
-          <label class="toggle"><input type="checkbox" id="save_video_clips"><div class="tslider"></div></label>
-        </div>
-      </div>
-      <div class="field">
-        <label>Секунд ДО / ПОСЛЕ события</label>
-        <div style="display:flex;gap:12px">
-          <div>
-            <div class="hint" style="margin-bottom:4px">До</div>
-            <input type="number" id="clip_pre_seconds"  min="2" max="60" step="1" style="max-width:100px">
-          </div>
-          <div>
-            <div class="hint" style="margin-bottom:4px">После</div>
-            <input type="number" id="clip_post_seconds" min="2" max="60" step="1" style="max-width:100px">
-          </div>
-        </div>
-        <div class="hint">Изменения применятся после перезапуска сервера.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Telegram -->
-  <div class="section">
-    <div class="sh">Telegram-уведомления</div>
-    <div class="sbody">
-      <div class="field">
-        <div class="toggle-row">
-          <label>Включить уведомления</label>
-          <label class="toggle"><input type="checkbox" id="telegram_enabled"><div class="tslider"></div></label>
-        </div>
-      </div>
-      <div class="field">
-        <label>Токен бота</label>
-        <input type="text" id="telegram_token" placeholder="123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11">
-      </div>
-      <div class="field">
-        <label>Chat ID</label>
-        <input type="text" id="telegram_chat_id" placeholder="-100123456789">
-        <div class="hint">Получить: написать боту, открыть https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</div>
+        <div class="hint">Скриншот тревоги попадает в журнал «События» и синхронизируется с облаком.</div>
       </div>
     </div>
   </div>
@@ -318,20 +248,42 @@ input[type=range]::-webkit-slider-thumb{
   <!-- Действия -->
   <div class="actions">
     <button class="btn btn-save" onclick="saveSettings()">Сохранить настройки</button>
-    <button class="btn btn-test" onclick="testTelegram()">Тест Telegram</button>
     <div class="msg" id="msg"></div>
   </div>
 
 </div>
 
 <script>
-// ─── чекбоксы классов ─────────────────────────────────────────────────────
-document.querySelectorAll('.chk-label').forEach(lbl=>{
-  const cb=lbl.querySelector('input[type=checkbox]');
-  const updateStyle=()=>lbl.classList.toggle('checked',cb.checked);
-  cb.addEventListener('change',updateStyle);
-  updateStyle();
-});
+// ─── чекбоксы классов (базовые + пользовательские) ────────────────────────
+// Русские подписи для базовых классов; пользовательские показываются как есть.
+const CLASS_LABELS={
+  car:'Автомобиль',bus:'Автобус',truck:'Грузовик',
+  person:'Человек',motorcycle:'Мотоцикл',bicycle:'Велосипед',
+};
+
+async function buildClassChecks(active){
+  const box=document.getElementById('class_checks');
+  let classes=[];
+  try{
+    const d=await(await fetch('/api/classes')).json();
+    classes=d.classes||[];
+  }catch(e){ console.warn('Не удалось загрузить классы:',e); }
+
+  box.innerHTML='';
+  classes.forEach(c=>{
+    const checked=active.has(c.name);
+    const lbl=document.createElement('label');
+    lbl.className='chk-label'+(checked?' checked':'');
+    lbl.dataset.cls=c.name;
+    const title=CLASS_LABELS[c.name]||c.name;
+    lbl.innerHTML=
+      `<input type="checkbox" value="${c.name}"${checked?' checked':''}>`+
+      `<div class="chk-dot"></div>${title}`;
+    const cb=lbl.querySelector('input');
+    cb.addEventListener('change',()=>lbl.classList.toggle('checked',cb.checked));
+    box.appendChild(lbl);
+  });
+}
 
 // ─── загрузка текущих настроек ────────────────────────────────────────────
 async function loadSettings(){
@@ -340,7 +292,6 @@ async function loadSettings(){
   // простые поля
   const simple=['video_source','frame_skip','long_stay_seconds','alert_confidence',
                 'event_cooldown_seconds',
-                'clip_pre_seconds','clip_post_seconds','telegram_token','telegram_chat_id',
                 'cloud_url','cloud_api_key'];
   simple.forEach(f=>{
     const el=document.getElementById(f);
@@ -354,17 +305,12 @@ async function loadSettings(){
 
   // чекбоксы-тогглы
   ['alert_on_appearance','global_long_stay_alerts',
-   'save_screenshots','save_video_clips','telegram_enabled','cloud_sync_enabled'].forEach(f=>{
+   'save_screenshots','cloud_sync_enabled'].forEach(f=>{
     const el=document.getElementById(f); if(el) el.checked=!!s[f];
   });
 
-  // классы
-  const active=new Set(s.active_classes||[]);
-  document.querySelectorAll('.chk-label').forEach(lbl=>{
-    const cb=lbl.querySelector('input');
-    cb.checked=active.has(cb.value);
-    lbl.classList.toggle('checked',cb.checked);
-  });
+  // классы (базовые + пользовательские) — строим динамически
+  await buildClassChecks(new Set(s.active_classes||[]));
 }
 
 // ─── сохранение ──────────────────────────────────────────────────────────
@@ -383,12 +329,6 @@ async function saveSettings(){
     alert_on_appearance: document.getElementById('alert_on_appearance').checked,
     global_long_stay_alerts: document.getElementById('global_long_stay_alerts').checked,
     save_screenshots:    document.getElementById('save_screenshots').checked,
-    save_video_clips:    document.getElementById('save_video_clips').checked,
-    clip_pre_seconds:    parseInt(document.getElementById('clip_pre_seconds').value),
-    clip_post_seconds:   parseInt(document.getElementById('clip_post_seconds').value),
-    telegram_enabled:    document.getElementById('telegram_enabled').checked,
-    telegram_token:      document.getElementById('telegram_token').value,
-    telegram_chat_id:    document.getElementById('telegram_chat_id').value,
     cloud_sync_enabled:  document.getElementById('cloud_sync_enabled').checked,
     cloud_url:           document.getElementById('cloud_url').value,
     cloud_api_key:       document.getElementById('cloud_api_key').value,
@@ -400,13 +340,6 @@ async function saveSettings(){
     body:JSON.stringify(data)
   });
   r.ok?showMsg('Сохранено','ok'):showMsg('Ошибка','err');
-}
-
-async function testTelegram(){
-  await saveSettings();
-  const r=await fetch('/api/telegram/test',{method:'POST'});
-  const d=await r.json();
-  alert(d.message);
 }
 
 function showMsg(text,cls){

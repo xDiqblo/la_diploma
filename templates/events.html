@@ -214,11 +214,10 @@ a.clip:hover{text-decoration:underline}
           <th>Объект</th>
           <th>Уверенность</th>
           <th>Скриншот</th>
-          <th>Видео</th>
         </tr>
       </thead>
       <tbody id="tbody">
-        <tr><td colspan="8" class="empty">Загрузка…</td></tr>
+        <tr><td colspan="7" class="empty">Загрузка…</td></tr>
       </tbody>
     </table>
 
@@ -237,6 +236,7 @@ a.clip:hover{text-decoration:underline}
 
 <script>
 let curPage=1;
+let curEvents=[];   // события текущей страницы (для модалки по индексу)
 
 function badgeFor(type){
   // выбираем цвет плашки по типу события
@@ -261,23 +261,21 @@ async function load(page=1){
 }
 
 function renderTable(events){
+  curEvents=events||[];
   const tb=document.getElementById('tbody');
-  if(!events.length){
-    tb.innerHTML='<tr><td colspan="8" class="empty">Нет событий</td></tr>';
+  if(!curEvents.length){
+    tb.innerHTML='<tr><td colspan="7" class="empty">Нет событий</td></tr>';
     return;
   }
-  tb.innerHTML=events.map(e=>{
+  tb.innerHTML=curEvents.map((e,i)=>{
     const badge=`<span class="badge ${badgeFor(e.event_type)}">${e.event_type}</span>`;
     const zone=e.zone?`<span class="zchip">${e.zone}</span>`:'<span style="color:var(--mut)">весь кадр</span>';
     const obj=e.class_name?`${e.class_name} · ID ${e.track_id??'—'}` :'—';
     const conf=e.confidence!=null?e.confidence.toFixed(2):'—';
     const shot=e.screenshot
-      ?`<img class="thumb" src="/${e.screenshot}" onclick="event.stopPropagation();showModal(${JSON.stringify(e)})">`
+      ?`<img class="thumb" src="/${e.screenshot}" onclick="event.stopPropagation();showModal(${i})">`
       :'—';
-    const clip=e.video_clip
-      ?`<a class="clip" href="/${e.video_clip}" target="_blank">▶ скачать</a>`
-      :'—';
-    return `<tr class="ev-row" onclick="showModal(${JSON.stringify(e).replace(/'/g,"&#39;")})">
+    return `<tr class="ev-row" onclick="showModal(${i})">
       <td class="ts">${e.id}</td>
       <td class="ts">${e.timestamp}</td>
       <td>${badge}</td>
@@ -285,7 +283,6 @@ function renderTable(events){
       <td>${obj}</td>
       <td class="ts">${conf}</td>
       <td>${shot}</td>
-      <td>${clip}</td>
     </tr>`;
   }).join('');
 }
@@ -333,10 +330,12 @@ function renderPager(total,page,per){
   `;
 }
 
-function showModal(e){
+function showModal(arg){
+  // arg — индекс события в curEvents (или само событие для обратной совместимости)
+  const e=(typeof arg==='number')?curEvents[arg]:arg;
+  if(!e) return;
   const badge=`<span class="badge ${badgeFor(e.event_type)}">${e.event_type}</span>`;
   const img=e.screenshot?`<img class="mimg" src="/${e.screenshot}" alt="скриншот">`:'<div style="color:var(--mut);padding:20px;text-align:center">Скриншот отсутствует</div>';
-  const clip=e.video_clip?`<a class="clip" href="/${e.video_clip}" target="_blank">▶ Скачать видеофрагмент</a>`:'—';
   document.getElementById('mcontent').innerHTML=`
     <div style="margin-bottom:14px;font-size:18px;font-weight:700">${badge}</div>
     <div class="mrow">
@@ -346,7 +345,6 @@ function showModal(e){
       <div class="mtag">ID<span>${e.track_id??'—'}</span></div>
       <div class="mtag">Уверенность<span>${e.confidence!=null?e.confidence.toFixed(2):'—'}</span></div>
     </div>
-    <div style="margin-bottom:10px">${clip}</div>
     ${img}
   `;
   document.getElementById('modal').classList.add('open');

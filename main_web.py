@@ -19,13 +19,12 @@ from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, Fil
 from fastapi.staticfiles import StaticFiles
 
 import config
-from core import telegram_notify, database
+from core import database
 from core import classes as class_registry
 from core import rules as rule_engine
 from core import email_notify
 from core import zone_store
 from core.detector import Detector
-from core.video_buffer import VideoClipBuffer
 from core.cloud_sync import CloudSync
 from core.zones import ZoneManager
 from core.rtsp_manager import RTSPManager, probe_source
@@ -78,7 +77,6 @@ current_class_counts: dict = {}
 current_zone_stats: list   = []
 detection_fps: int         = 0
 running: bool              = True
-video_clip_buffer: VideoClipBuffer | None = None
 
 _alerted_appear: set  = set()
 _alerted_long:   set  = set()
@@ -93,10 +91,10 @@ SETTINGS = config.load_settings()
 
 def _best_model_path() -> str:
     """Возвращает путь к лучшей доступной модели."""
-    for p in ('model/best.pt', 'model/yolov8n.pt'):
+    for p in ('model/best.pt', 'model/yolov8m.pt'):
         if os.path.exists(p):
             return p
-    return 'model/yolov8n.pt'  # ultralytics скачает сама
+    return 'model/yolov8m.pt'  # ultralytics скачает сама
 
 
 detector = Detector(
@@ -164,7 +162,7 @@ def save_event(event_type: str, obj: dict, frame,
         except Exception as exc:
             logger.error('Не удалось сохранить скриншот: %s', exc)
 
-    event_id = database.add_event(
+    database.add_event(
         event_type=event_type,
         class_name=class_name,
         track_id=track_id,
@@ -173,33 +171,16 @@ def save_event(event_type: str, obj: dict, frame,
         screenshot=screenshot_path,
     )
 
-    if save_media and SETTINGS.get('save_video_clips', True) and video_clip_buffer:
-        def _on_clip_ready(path: str):
-            database.update_event_clip(event_id, path.replace('\\', '/'))
-        video_clip_buffer.start_clip(on_complete=_on_clip_ready)
-
-    if SETTINGS.get('telegram_enabled', False):
-        token   = SETTINGS.get('telegram_token', '')
-        chat_id = SETTINGS.get('telegram_chat_id', '')
-        zone_line = f'Зона: {zone}\n' if zone else ''
-        caption = (
-            f'ТРЕВОГА: {event_type}\n'
-            f'{zone_line}'
-            f'Объект: {class_name} (ID {track_id})\n'
-            f'Уверенность: {confidence}\n'
-            f'Время: {time.strftime("%H:%M:%S")}'
-        )
-        if screenshot_path and os.path.exists(screenshot_path):
-            telegram_notify.send_photo(token, chat_id, screenshot_path, caption)
-        else:
-            telegram_notify.send_message(token, chat_id, caption)
+    # Уведомление по email на любую тревогу (зоны, правила, аномалии, глобальные).
+    _notify_email(event_type, class_name, track_id, confidence, zone, screenshot_path)
 
     logger.info('Событие: %s | зона=%s | %s ID:%s conf:%s',
                 event_type, zone, class_name, track_id, confidence)
 
 
-# Состояние диспетчера тревог (режимы immediate / after_n / delay)
-_rule_fire_counts: dict = {}   # rule_id -> накопленных срабатываний (after_n)
+# Состояние диспетчера тревог (антидребезг писем по типу+зоне)
+_rule_fire_counts: dict = {}   # совместимость со сбросом в api_start/api_stop
+_email_last_sent:  dict = {}   # (event_type, zone) -> время последнего письма
 
 
 def _send_email_async(subject: str, body: str, screenshot: str | None):
@@ -211,61 +192,52 @@ def _send_email_async(subject: str, body: str, screenshot: str | None):
 
     def _worker():
         ok, msg = email_notify.send_alert(cfg, subject, body, attach)
-        if not ok:
+        if ok:
+            logger.info('Тревога отправлена на email')
+        else:
             logger.warning('Тревога по email не отправлена: %s', msg)
 
     threading.Thread(target=_worker, daemon=True).start()
 
 
-def _dispatch_rule_alert(fired: dict, frame, zone_name: str | None):
+def _notify_email(event_type, class_name, track_id, confidence, zone, screenshot):
     """
-    Отправка тревоги по сработавшему правилу согласно настройкам диспетчера:
-      immediate — сразу; after_n — после N срабатываний; delay — с задержкой.
+    Отправляет письмо-тревогу (если включено), с антидребезгом по типу+зоне,
+    чтобы один и тот же тип события не слал письма каждый кадр.
     """
     if not SETTINGS.get('email_enabled'):
         return
 
-    rid  = fired['rule_id']
-    mode = SETTINGS.get('alert_send_mode', 'immediate')
+    now = time.time()
+    cooldown = max(10, int(SETTINGS.get('event_cooldown_seconds', 15)))
+    key = (event_type, zone or '')
+    if now - _email_last_sent.get(key, 0) < cooldown:
+        return
+    _email_last_sent[key] = now
 
-    zone_line = f'Зона: {zone_name}\n' if zone_name else ''
-    subject = f"Тревога: {fired['name']}"
+    zone_line = f'Зона: {zone}\n' if zone else 'Зона: весь кадр\n'
+    conf_line = f'Уверенность: {confidence}\n' if confidence is not None else ''
+    subject = f'Тревога АЗС: {event_type}'
     body = (
-        f"Сработало правило: {fired['name']}\n"
-        f"{zone_line}"
-        f"Класс объекта: {fired['matched_class']} (обнаружено: {fired['count']})\n"
-        f"Время: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+        f'Сработала тревога системы видеонаблюдения АЗС.\n\n'
+        f'Тип: {event_type}\n'
+        f'{zone_line}'
+        f'Объект: {class_name or "—"}'
+        f'{f" (ID {track_id})" if track_id is not None else ""}\n'
+        f'{conf_line}'
+        f'Время: {time.strftime("%Y-%m-%d %H:%M:%S")}'
     )
-
-    # Скриншот для вложения (если включено)
-    screenshot = None
-    if SETTINGS.get('email_attach_screenshot', True) and frame is not None:
-        fname = f"alert_{time.strftime('%Y%m%d_%H%M%S')}_{rid}.jpg"
-        path  = os.path.join(MEDIA_DIR, fname)
-        try:
-            cv2.imwrite(path, frame)
-            screenshot = path
-        except Exception as exc:
-            logger.error('Не удалось сохранить скриншот тревоги: %s', exc)
-
-    if mode == 'after_n':
-        need = max(1, int(SETTINGS.get('alert_send_after_n', 2)))
-        _rule_fire_counts[rid] = _rule_fire_counts.get(rid, 0) + 1
-        if _rule_fire_counts[rid] < need:
-            return
-        _rule_fire_counts[rid] = 0
-        _send_email_async(subject, body, screenshot)
-    elif mode == 'delay':
-        delay = max(0, float(SETTINGS.get('alert_send_delay', 5)))
-        threading.Timer(delay, _send_email_async,
-                        args=(subject, body, screenshot)).start()
-    else:  # immediate
-        _send_email_async(subject, body, screenshot)
+    # В письмо вкладываем уже сохранённый скриншот события (если он есть).
+    attach = screenshot if (screenshot and os.path.exists(screenshot)) else None
+    _send_email_async(subject, body, attach)
 
 
-def handle_events(frame, detections: list):
+def handle_events(frame, detections: list, clean_frame=None):
     now  = time.time()
     h, w = frame.shape[:2]
+    # Кадр для обучающей выборки — без рамок детекции и без зон,
+    # чтобы сохранённые примеры были «чистыми» (см. capture_loop).
+    train_frame = clean_frame if clean_frame is not None else frame
 
     # Тревоги по зонам
     for ev in zone_manager.process(detections, w, h, now):
@@ -278,16 +250,16 @@ def handle_events(frame, detections: list):
     for fr in fired_rules:
         zone_name = zone_manager.zone_name(fr['zone_id']) if fr['zone_id'] else None
         obj = {'class': fr['matched_class'], 'track_id': None, 'confidence': None}
+        # save_event сам отправит письмо-тревогу (см. _notify_email).
         save_event(f"Правило: {fr['name']}", obj, frame, zone=zone_name)
-        _dispatch_rule_alert(fr, frame, zone_name)
 
     # Аномалии АЗС
     for alert in anomaly_detector.process(detections, now):
         save_event(alert['type'], alert['obj'], frame)
 
-    # Сбор данных для дообучения
-    hard_collector.process(frame, detections)
-    pseudo_labeler.update(frame, detections)
+    # Сбор данных для дообучения (на чистом кадре — без рамок и зон)
+    hard_collector.process(train_frame, detections)
+    pseudo_labeler.update(train_frame, detections)
 
     # Глобальные тревоги (если включены)
     cooldown   = SETTINGS.get('event_cooldown_seconds', 15)
@@ -323,16 +295,7 @@ def handle_events(frame, detections: list):
 
 def capture_loop():
     global frame_buffer, current_detections, current_class_counts
-    global current_zone_stats, detection_fps, running, video_clip_buffer
-
-    # Инициализируем буфер с дефолтными параметрами
-    # (пересоздаём при смене источника если нужен другой FPS)
-    video_clip_buffer = VideoClipBuffer(
-        fps=25,
-        pre_seconds=SETTINGS.get('clip_pre_seconds', 10),
-        post_seconds=SETTINGS.get('clip_post_seconds', 10),
-        out_dir=MEDIA_DIR,
-    )
+    global current_zone_stats, detection_fps, running
 
     frame_count  = 0
     fps_timer    = time.time()
@@ -360,15 +323,20 @@ def capture_loop():
             continue
         last_seq = seq
 
+        # Чистый кадр (до отрисовки рамок детекции) — нужен для обучающей
+        # выборки, чтобы примеры не содержали наложенных рамок/зон.
+        clean = frame.copy()
+
         processed, dets, counts = detector.process_frame(frame)
-        zone_manager.draw(processed)
+        # Зоны НЕ «вжигаем» в кадр: они рисуются SVG-оверлеем на странице
+        # «Монитор» (index.html). Это убирает двойную отрисовку и оставляет
+        # видеопоток (и кадры дообучения) чистыми.
 
         current_detections   = dets
         current_class_counts = counts
 
         if detector.enabled:
-            handle_events(processed, dets)
-            video_clip_buffer.add_frame(processed)
+            handle_events(processed, dets, clean)
             current_zone_stats = zone_manager.get_live()
 
         frame_buffer = processed
@@ -501,6 +469,45 @@ async def video_feed():
     )
 
 
+def _mjpeg_raw_gen():
+    """
+    «Сырой» MJPEG-поток напрямую от источника — без рамок детекции.
+    Используется на странице дообучения (ручная разметка), где оператору
+    нужно видеть чистое видео, чтобы отбирать кадры для разметки.
+    """
+    prev_seq = None
+    last_placeholder = 0.0
+    while running:
+        seq, frame = rtsp_manager.read_seq()
+        if frame is not None:
+            if seq != prev_seq:
+                prev_seq = seq
+                ok, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                if ok:
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'
+                           + jpeg.tobytes() + b'\r\n')
+            else:
+                time.sleep(0.02)
+            continue
+        now = time.time()
+        if now - last_placeholder > 0.4:
+            last_placeholder = now
+            prev_seq = None
+            data = _placeholder_jpeg()
+            if data:
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + data + b'\r\n')
+        else:
+            time.sleep(0.05)
+
+
+@app.get('/video_feed_raw')
+async def video_feed_raw():
+    return StreamingResponse(
+        _mjpeg_raw_gen(),
+        media_type='multipart/x-mixed-replace; boundary=frame',
+    )
+
+
 # ---------------------------------------------------------------------------
 # HTML-страницы
 # ---------------------------------------------------------------------------
@@ -556,6 +563,7 @@ async def api_start():
     _alerted_long.clear()
     _last_global_event.clear()
     _rule_fire_counts.clear()
+    _email_last_sent.clear()
     rule_engine.reset_runtime()
     zone_manager.reset_runtime()
     anomaly_detector.reset()
@@ -568,6 +576,7 @@ async def api_stop():
     global current_zone_stats
     detector.set_enabled(False)
     _rule_fire_counts.clear()
+    _email_last_sent.clear()
     rule_engine.reset_runtime()
     zone_manager.reset_runtime()
     anomaly_detector.reset()
@@ -892,19 +901,6 @@ async def api_save_settings(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# API: Telegram
-# ---------------------------------------------------------------------------
-
-@app.post('/api/telegram/test')
-async def api_telegram_test():
-    ok, msg = telegram_notify.test_connection(
-        SETTINGS.get('telegram_token', ''),
-        SETTINGS.get('telegram_chat_id', ''),
-    )
-    return JSONResponse({'ok': ok, 'message': msg})
-
-
-# ---------------------------------------------------------------------------
 # API: дообучение
 # ---------------------------------------------------------------------------
 
@@ -979,6 +975,37 @@ async def api_retrain_reject(request: Request):
 async def api_retrain_confirm_all():
     count = trainer.confirm_all()
     return {'ok': True, 'confirmed': count}
+
+
+@app.post('/api/retrain/clear_pending')
+async def api_retrain_clear_pending():
+    count = trainer.clear_pending()
+    return {'ok': True, 'cleared': count}
+
+
+@app.post('/api/retrain/hard_confirm')
+async def api_retrain_hard_confirm(request: Request):
+    data            = await request.json()
+    filename        = data.get('filename', '')
+    confirmed_class = data.get('confirmed_class', '')
+    if not filename or not confirmed_class:
+        return JSONResponse({'ok': False, 'error': 'filename и confirmed_class обязательны'}, 400)
+    return {'ok': trainer.confirm_hard_example(filename, confirmed_class)}
+
+
+@app.post('/api/retrain/hard_reject')
+async def api_retrain_hard_reject(request: Request):
+    data     = await request.json()
+    filename = data.get('filename', '')
+    if not filename:
+        return JSONResponse({'ok': False, 'error': 'filename обязателен'}, 400)
+    return {'ok': trainer.reject_hard_example(filename)}
+
+
+@app.post('/api/retrain/clear_hard')
+async def api_retrain_clear_hard():
+    count = trainer.clear_hard()
+    return {'ok': True, 'cleared': count}
 
 
 @app.post('/api/retrain/start')

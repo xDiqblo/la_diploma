@@ -515,6 +515,84 @@ class IncrementalTrainer:
         logger.info('Подтверждено все предложения: %d шт.', count)
         return count
 
+    def clear_pending(self) -> int:
+        """
+        Удаляет все ожидающие подтверждения предложения из pending_labels/
+        (вместе с их JSON-метаданными). Возвращает число удалённых примеров.
+        """
+        count = 0
+        for img_path in list(DIR_PENDING.glob('*.jpg')):
+            try:
+                meta_path = img_path.with_suffix('.json')
+                if meta_path.exists():
+                    meta_path.unlink()
+                img_path.unlink()
+                count += 1
+            except Exception as exc:
+                logger.error('Ошибка удаления предложения %s: %s', img_path.name, exc)
+        logger.info('Очищены все предложения: %d шт.', count)
+        return count
+
+    def confirm_hard_example(self, filename: str, confirmed_class: str) -> bool:
+        """
+        Переносит трудный пример из hard_examples/ в confirmed_labels/
+        с указанным классом — чтобы он попал в дообучение.
+        """
+        src = DIR_HARD / filename
+        if not src.exists():
+            logger.warning('Трудный пример не найден: %s', src)
+            return False
+
+        meta = _load_meta(src)
+        meta['status']          = 'confirmed'
+        meta['confirmed_class'] = confirmed_class
+        meta['suggested_class'] = meta.get('suggested_class', confirmed_class)
+        meta['confirmed_at']    = datetime.now().isoformat()
+
+        dst = DIR_CONFIRMED / filename
+        try:
+            shutil.copy2(src, dst)
+            _save_meta(dst, meta)
+            src.unlink()
+            meta_path = src.with_suffix('.json')
+            if meta_path.exists():
+                meta_path.unlink()
+            logger.info('Трудный пример подтверждён: %s -> класс "%s"', filename, confirmed_class)
+            return True
+        except Exception as exc:
+            logger.error('Ошибка подтверждения трудного примера %s: %s', filename, exc)
+            return False
+
+    def reject_hard_example(self, filename: str) -> bool:
+        """Удаляет трудный пример из hard_examples/."""
+        src = DIR_HARD / filename
+        if not src.exists():
+            return False
+        try:
+            meta_path = src.with_suffix('.json')
+            if meta_path.exists():
+                meta_path.unlink()
+            src.unlink()
+            return True
+        except Exception as exc:
+            logger.error('Ошибка удаления трудного примера %s: %s', filename, exc)
+            return False
+
+    def clear_hard(self) -> int:
+        """Удаляет все трудные примеры из hard_examples/. Возвращает их число."""
+        count = 0
+        for img_path in list(DIR_HARD.glob('*.jpg')):
+            try:
+                meta_path = img_path.with_suffix('.json')
+                if meta_path.exists():
+                    meta_path.unlink()
+                img_path.unlink()
+                count += 1
+            except Exception as exc:
+                logger.error('Ошибка удаления трудного примера %s: %s', img_path.name, exc)
+        logger.info('Очищены все трудные примеры: %d шт.', count)
+        return count
+
     def get_confirmed_count(self) -> int:
         """Число подтверждённых примеров, готовых к дообучению."""
         return len(list(DIR_CONFIRMED.glob('*.jpg')))
@@ -831,13 +909,50 @@ class IncrementalTrainer:
             verbose=False,
         )
 
-        # Путь к лучшей модели от этого запуска
-        best_pt = Path('data/runs/retrain/weights/best.pt')
-        if not best_pt.exists():
-            raise FileNotFoundError(f'Файл best.pt не найден после тренировки: {best_pt}')
+        # Путь к обученной модели определяем НАДЁЖНО: ultralytics может сохранить
+        # её в каталог retrain/retrain2/... или в свой runs_dir. Берём фактический
+        # save_dir тренера, затем — best.pt, иначе last.pt, иначе ищем по дереву.
+        best_pt = self._locate_trained_weights(model, results)
+        if best_pt is None:
+            raise FileNotFoundError(
+                'Не удалось найти веса (best.pt/last.pt) после дообучения')
 
-        self._set_status('training', 80, 'Тренировка завершена, собираем метрики...')
+        self._set_status('training', 80, f'Тренировка завершена: {best_pt.name}')
         return best_pt
+
+    @staticmethod
+    def _locate_trained_weights(model, results) -> Optional[Path]:
+        """
+        Находит файл весов после тренировки. Порядок поиска:
+          1) model.trainer.best / model.trainer.last;
+          2) save_dir (из trainer или results) + weights/best.pt|last.pt;
+          3) самый свежий best.pt|last.pt во всём дереве data/runs.
+        """
+        # 1) Прямые ссылки тренера
+        trainer = getattr(model, 'trainer', None)
+        for attr in ('best', 'last'):
+            p = getattr(trainer, attr, None) if trainer else None
+            if p and Path(p).exists():
+                return Path(p)
+
+        # 2) Каталог результатов
+        save_dir = None
+        if trainer is not None and getattr(trainer, 'save_dir', None):
+            save_dir = Path(trainer.save_dir)
+        elif getattr(results, 'save_dir', None):
+            save_dir = Path(results.save_dir)
+        if save_dir:
+            for name in ('best.pt', 'last.pt'):
+                cand = save_dir / 'weights' / name
+                if cand.exists():
+                    return cand
+
+        # 3) Поиск по всему дереву запусков (берём самый свежий файл)
+        candidates = list(Path('data/runs').glob('**/weights/best.pt')) + \
+                     list(Path('data/runs').glob('**/weights/last.pt'))
+        if candidates:
+            return max(candidates, key=lambda p: p.stat().st_mtime)
+        return None
 
     def _validate_model(self, new_model_path: Path, val_files: list) -> float:
         """

@@ -213,30 +213,8 @@ input:focus,select:focus{outline:none;border-color:var(--acc)}
           <div><label>Пароль приложения</label><input type="text" id="emailPassword" placeholder="пароль приложения SMTP"></div>
         </div>
         <div class="field">
-          <label>Адрес отправителя (необязательно)</label>
-          <input type="text" id="emailFrom" placeholder="по умолчанию = логин SMTP">
-        </div>
-        <div class="field">
           <label>Получатели (через запятую)</label>
           <input type="text" id="emailTo" placeholder="operator@example.com, security@example.com">
-        </div>
-        <div class="row">
-          <div>
-            <label>Когда отправлять</label>
-            <select id="sendMode" onchange="sendModeChanged()">
-              <option value="immediate">Сразу при срабатывании</option>
-              <option value="after_n">После N срабатываний</option>
-              <option value="delay">С задержкой</option>
-            </select>
-          </div>
-          <div id="afterNWrap">
-            <label>N срабатываний</label>
-            <input type="number" id="sendAfterN" min="1" max="100" value="2">
-          </div>
-          <div id="delayWrap">
-            <label>Задержка, сек</label>
-            <input type="number" id="sendDelay" min="0" max="600" value="5">
-          </div>
         </div>
         <div class="field">
           <div class="toggle-row">
@@ -248,8 +226,8 @@ input:focus,select:focus{outline:none;border-color:var(--acc)}
           <button class="btn btn-grn" onclick="saveAlerts()">Сохранить настройки</button>
           <button class="btn btn-acc" onclick="testEmail()">Отправить тестовое письмо</button>
         </div>
-        <div class="hint">Настройки применяются без перезапуска сервера. Скрипт правила:
-          «ЕСЛИ класс = X [И зона = Y] ТО отправить тревогу» задаётся на вкладке «Правила тревог».</div>
+        <div class="hint">Настройки применяются без перезапуска сервера. Письмо отправляется
+          сразу при срабатывании правила. Правила задаются на вкладке «Правила тревог».</div>
         <div class="msg" id="alertsMsg"></div>
       </div>
     </div>
@@ -403,11 +381,6 @@ async function delRule(id,name){
 }
 
 /* ── ОТПРАВКА ТРЕВОГ ── */
-function sendModeChanged(){
-  const m=document.getElementById('sendMode').value;
-  document.getElementById('afterNWrap').style.display=(m==='after_n')?'block':'none';
-  document.getElementById('delayWrap').style.display=(m==='delay')?'block':'none';
-}
 async function loadAlerts(){
   const s=await(await fetch('/api/settings')).json();
   document.getElementById('emailEnabled').checked=!!s.email_enabled;
@@ -416,13 +389,8 @@ async function loadAlerts(){
   document.getElementById('emailTls').checked=s.email_use_tls!==false;
   document.getElementById('emailLogin').value=s.email_login||'';
   document.getElementById('emailPassword').value=s.email_password||'';
-  document.getElementById('emailFrom').value=s.email_from||'';
   document.getElementById('emailTo').value=(s.email_to||[]).join(', ');
-  document.getElementById('sendMode').value=s.alert_send_mode||'immediate';
-  document.getElementById('sendAfterN').value=s.alert_send_after_n||2;
-  document.getElementById('sendDelay').value=s.alert_send_delay||5;
   document.getElementById('attachShot').checked=s.email_attach_screenshot!==false;
-  sendModeChanged();
 }
 function collectAlerts(){
   const to=document.getElementById('emailTo').value.split(',').map(s=>s.trim()).filter(Boolean);
@@ -433,11 +401,8 @@ function collectAlerts(){
     email_use_tls:document.getElementById('emailTls').checked,
     email_login:document.getElementById('emailLogin').value.trim(),
     email_password:document.getElementById('emailPassword').value,
-    email_from:document.getElementById('emailFrom').value.trim(),
     email_to:to,
-    alert_send_mode:document.getElementById('sendMode').value,
-    alert_send_after_n:parseInt(document.getElementById('sendAfterN').value)||2,
-    alert_send_delay:parseInt(document.getElementById('sendDelay').value)||5,
+    alert_send_mode:'immediate',
     email_attach_screenshot:document.getElementById('attachShot').checked,
   };
 }

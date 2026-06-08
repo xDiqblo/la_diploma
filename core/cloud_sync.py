@@ -17,7 +17,7 @@ import requests
 # через пакет, чтобы облачная выгрузка действительно запускалась.
 from core import database
 
-SYNC_INTERVAL = 30  # секунд между попытками синхронизации
+SYNC_INTERVAL = 10  # секунд между попытками синхронизации
 
 
 class CloudSync:
@@ -57,10 +57,8 @@ class CloudSync:
             self._stop.wait(SYNC_INTERVAL)
 
     def _sync_batch(self):
-        """Отправляет пачку несинхронизированных событий."""
-        # min_age_seconds — даём видеоклипу (пишется асинхронно) время записаться,
-        # чтобы он успел уйти в облако вместе с событием.
-        events = database.get_unsynced(limit=20, min_age_seconds=20)
+        """Отправляет пачку несинхронизированных событий вместе со скриншотами."""
+        events = database.get_unsynced(limit=20)
         if not events:
             return
 
@@ -86,10 +84,11 @@ class CloudSync:
                     print(f'[CloudSync] Событие {ev["id"]} отклонено: {resp.status_code}')
                     continue
 
-                database.mark_synced(ev['id'])
-
-                # Медиа выгружаем отдельными запросами в облачное хранилище.
+                # Скриншот выгружаем ДО отметки synced: если выгрузка сорвётся,
+                # событие повторно уйдёт целиком (вставка идемпотентна), и тонкий
+                # клиент гарантированно получит и событие, и его скриншот.
                 self._upload_media(ev, headers)
+                database.mark_synced(ev['id'])
 
             except requests.exceptions.ConnectionError:
                 print('[CloudSync] Облако недоступно, следующая попытка через 30 сек')
@@ -98,18 +97,11 @@ class CloudSync:
                 print(f'[CloudSync] Ошибка события {ev["id"]}: {e}')
 
     def _upload_media(self, ev: dict, headers: dict):
-        """Выгружает скриншот и видеоклип события в облачное хранилище."""
+        """Выгружает скриншот события в облачное хранилище."""
         shot = ev.get('screenshot')
         if shot and os.path.exists(shot):
             with open(shot, 'rb') as f:
                 requests.post(
                     f'{self.cloud_url}/api/events/{ev["id"]}/screenshot',
                     files={'file': f}, headers=headers, timeout=10,
-                )
-        clip = ev.get('video_clip')
-        if clip and os.path.exists(clip):
-            with open(clip, 'rb') as f:
-                requests.post(
-                    f'{self.cloud_url}/api/events/{ev["id"]}/clip',
-                    files={'file': f}, headers=headers, timeout=30,
                 )

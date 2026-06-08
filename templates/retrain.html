@@ -165,6 +165,9 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
   display: flex; align-items: center; justify-content: center;
   background: rgba(0, 0, 0, .55); opacity: 0;
   transition: opacity .2s;
+  /* Не перехватываем клики — иначе по картинке pending нельзя открыть
+     полноразмерный просмотр (клик попадал в оверлей, а не в <img>). */
+  pointer-events: none;
 }
 .card:hover .card-overlay { opacity: 1; }
 .card-status-badge {
@@ -270,6 +273,27 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
 }
 .class-select:focus { outline: none; border-color: var(--acc); }
 
+/* ── лайтбокс (просмотр кадра в полном размере) ───────── */
+.lightbox {
+  display: none; position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, .85);
+  align-items: center; justify-content: center;
+  padding: 30px;
+}
+.lightbox.visible { display: flex; }
+.lightbox img {
+  max-width: 95vw; max-height: 90vh;
+  border: 1px solid var(--bord); border-radius: 6px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, .6);
+}
+.lightbox-close {
+  position: absolute; top: 18px; right: 26px;
+  font-size: 34px; line-height: 1; color: #fff; cursor: pointer;
+  font-family: var(--mono); user-select: none;
+}
+.lightbox-close:hover { color: var(--acc); }
+.card-img-wrap img { cursor: zoom-in; }
+
 /* ── вкладки ─────────────────────────────────────────── */
 .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--bord); }
 .tab {
@@ -360,6 +384,9 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
               <button class="btn btn-success btn-sm" onclick="confirmAll()">
                 Подтвердить все
               </button>
+              <button class="btn btn-danger btn-sm" onclick="clearAllPending()">
+                Очистить все
+              </button>
               <button class="btn btn-outline btn-sm" onclick="loadPending()">
                 Обновить
               </button>
@@ -382,6 +409,9 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
         <div class="tab-content" id="tab-hard">
           <div class="pbody">
             <div class="toolbar">
+              <button class="btn btn-danger btn-sm" onclick="clearAllHard()">
+                Очистить все
+              </button>
               <button class="btn btn-outline btn-sm" onclick="loadHardExamples()">
                 Обновить
               </button>
@@ -405,9 +435,23 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
           <div class="pbody">
             <div style="font-size:13px;color:var(--mut);line-height:1.6;margin-bottom:12px">
               Источник кадров выбирается на странице «Монитор» (веб-камера, видеофайл или RTSP).
-              Автоматическая детекция для ручной разметки <b style="color:var(--txt)">не требуется</b>.
+              Автоматическая детекция для ручной разметки <b style="color:var(--txt)">не требуется</b> —
+              ниже показан «живой» видеопоток без рамок детекции.
               Возьмите текущий кадр, выделите объект рамкой, выберите класс и сохраните в выборку.
             </div>
+
+            <!-- Живой видеопоток без детекции -->
+            <div style="margin-bottom:12px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+                          color:var(--mut);margin-bottom:6px">Видеопоток (без детекции)</div>
+              <div style="position:relative;display:inline-block;max-width:100%;
+                          border:1px solid var(--bord);border-radius:6px;background:#000;overflow:hidden">
+                <img id="manualLive"
+                     style="display:block;max-width:100%;height:auto"
+                     alt="видеопоток">
+              </div>
+            </div>
+
             <div class="toolbar">
               <button class="btn btn-primary btn-sm" onclick="grabFrame()">Взять текущий кадр</button>
               <select id="manualClass" class="class-select" style="max-width:200px"></select>
@@ -519,6 +563,12 @@ body { background: var(--bg); color: var(--txt); font-family: var(--font); min-h
 
 </div>
 
+<!-- Лайтбокс: просмотр кадра в полном размере -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
 <script>
 /* ── вспомогательные функции ───────────────────────────── */
 
@@ -527,6 +577,21 @@ const CLASS_COLORS = {
   person: '#00e676', car: '#4488ff', bus: '#ffaa44',
   truck: '#ff6020', motorcycle: '#cc88ff', bicycle: '#00bb88', unknown: '#888'
 };
+
+// Полный список имён классов (базовые + пользовательские), грузится с сервера.
+let classOptionList = CLASSES.slice();
+async function loadClassList() {
+  try {
+    const d = await (await fetch('/api/classes')).json();
+    const names = (d.classes || []).map(c => c.name);
+    if (names.length) classOptionList = names;
+  } catch (e) { console.warn('Не удалось загрузить классы:', e); }
+}
+function classOptionsHtml(selected) {
+  return classOptionList.map(c =>
+    `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`
+  ).join('');
+}
 
 let pendingItems = [];   // текущий список предложений
 let localState   = {};   // состояние подтверждений в UI (до сохранения)
@@ -542,6 +607,20 @@ function showNotif(text, type = 'info') {
   setTimeout(() => el.classList.remove('visible'), 5000);
 }
 
+/* ── лайтбокс ──────────────────────────────────────────── */
+function openLightbox(src) {
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lightboxImg').src = src;
+  lb.classList.add('visible');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('visible');
+  document.getElementById('lightboxImg').src = '';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
 /* ── вкладки ────────────────────────────────────────────── */
 
 function switchTab(name) {
@@ -553,7 +632,15 @@ function switchTab(name) {
   document.getElementById('tab-' + name).classList.add('active');
 
   if (name === 'hard')   loadHardExamples();
-  if (name === 'manual') initManualClasses();
+  // Живой видеопоток подключаем только когда вкладка ручной разметки активна,
+  // и отключаем при уходе — чтобы не держать лишнее MJPEG-соединение.
+  const live = document.getElementById('manualLive');
+  if (name === 'manual') {
+    initManualClasses();
+    if (live && !live.src) live.src = '/video_feed_raw?t=' + Date.now();
+  } else if (live) {
+    live.removeAttribute('src');
+  }
 }
 
 /* ── ручная разметка (без автоматической детекции) ──────── */
@@ -800,15 +887,14 @@ function renderPendingGallery(items) {
       corrected: 'исправлено', skipped: 'пропущено'
     }[state] || 'ожидает';
 
-    const classOptions = CLASSES.map(c =>
-      `<option value="${c}" ${c === cls ? 'selected' : ''}>${c}</option>`
-    ).join('');
+    const classOptions = classOptionsHtml(cls);
 
     return `
     <div class="card ${state}" id="card-${idx}">
       <div class="card-img-wrap">
         <img src="/api/retrain/image?file=${encodeURIComponent(item.filename)}&dir=pending"
-             alt="${item.suggested_class}" loading="lazy">
+             alt="${item.suggested_class}" loading="lazy"
+             onclick="openLightbox(this.src)" title="Открыть в полном размере">
         <div class="card-status-badge ${badgeClass}">${badgeText}</div>
         <div class="conf-bar">
           <div class="conf-fill" style="width: ${confPct}%"></div>
@@ -861,27 +947,93 @@ function renderHardGallery(items) {
     return;
   }
 
-  container.innerHTML = items.map(item => {
-    const color = cls_color(item.suggested_class);
+  container.innerHTML = items.map((item, idx) => {
+    const cls   = item.suggested_class || 'unknown';
+    const color = cls_color(cls);
     const confPct = Math.round((item.confidence || 0) * 100);
     return `
-    <div class="card">
+    <div class="card" id="hard-card-${idx}">
       <div class="card-img-wrap">
         <img src="/api/retrain/image?file=${encodeURIComponent(item.filename)}&dir=hard"
-             alt="${item.suggested_class}" loading="lazy">
+             alt="${cls}" loading="lazy"
+             onclick="openLightbox(this.src)" title="Открыть в полном размере">
         <div class="card-status-badge badge-pending">${item.reason || 'hard'}</div>
         <div class="conf-bar">
           <div class="conf-fill" style="width: ${confPct}%"></div>
         </div>
       </div>
       <div class="card-body">
-        <div class="card-cls" style="color: ${color}">${(item.suggested_class || 'unknown').toUpperCase()}</div>
+        <div class="card-cls" style="color: ${color}">${cls.toUpperCase()}</div>
         <div class="card-meta">
           conf ${confPct}% | трек ${item.track_id ?? '—'}
+        </div>
+        <select class="class-select" id="hard-sel-${idx}">
+          ${classOptionsHtml(cls)}
+        </select>
+        <div class="card-actions" style="margin-top: 6px;">
+          <button class="btn btn-success btn-sm"
+            onclick="confirmHard(${idx}, '${item.filename}')"
+            title="Добавить в обучающую выборку с выбранным классом">
+            В обучение
+          </button>
+          <button class="btn btn-danger btn-sm"
+            onclick="rejectHard(${idx}, '${item.filename}')"
+            title="Удалить этот пример">
+            Удалить
+          </button>
         </div>
       </div>
     </div>`;
   }).join('');
+}
+
+async function confirmHard(idx, filename) {
+  const sel = document.getElementById('hard-sel-' + idx);
+  const cls = sel ? sel.value : '';
+  if (!cls) { showNotif('Выберите класс объекта', 'err'); return; }
+  try {
+    const r = await fetch('/api/retrain/hard_confirm', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, confirmed_class: cls }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showNotif('Пример добавлен в обучающую выборку', 'ok');
+      const card = document.getElementById('hard-card-' + idx);
+      if (card) card.remove();
+      loadStatus();
+    } else {
+      showNotif('Ошибка: ' + (d.error || 'не удалось подтвердить'), 'err');
+    }
+  } catch (e) { showNotif('Ошибка: ' + e, 'err'); }
+}
+
+async function rejectHard(idx, filename) {
+  try {
+    const r = await fetch('/api/retrain/hard_reject', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const card = document.getElementById('hard-card-' + idx);
+      if (card) card.remove();
+      loadStatus();
+    } else {
+      showNotif('Ошибка удаления примера', 'err');
+    }
+  } catch (e) { showNotif('Ошибка: ' + e, 'err'); }
+}
+
+async function clearAllHard() {
+  if (!confirm('Удалить все трудные примеры? Действие необратимо.')) return;
+  try {
+    const r = await fetch('/api/retrain/clear_hard', { method: 'POST' });
+    const d = await r.json();
+    showNotif(`Удалено ${d.cleared} трудных примеров`, 'ok');
+    await loadHardExamples();
+    await loadStatus();
+  } catch (e) { showNotif('Ошибка: ' + e, 'err'); }
 }
 
 /* ── рендер версий моделей ──────────────────────────────── */
@@ -989,6 +1141,20 @@ async function confirmAll() {
   }
 }
 
+async function clearAllPending() {
+  if (!confirm('Удалить все ожидающие подтверждения предложения? Действие необратимо.')) return;
+  try {
+    const r = await fetch('/api/retrain/clear_pending', { method: 'POST' });
+    const d = await r.json();
+    showNotif(`Удалено ${d.cleared} предложений`, 'ok');
+    localState = {};
+    await loadPending();
+    await loadStatus();
+  } catch (e) {
+    showNotif('Ошибка: ' + e, 'err');
+  }
+}
+
 /* ── дообучение ─────────────────────────────────────────── */
 
 async function startTraining() {
@@ -1062,6 +1228,7 @@ async function applyVersion(filename) {
 async function init() {
   document.getElementById('manualStage').style.display = 'none';
   setupManualCanvas();
+  await loadClassList();
   await loadStatus();
   await loadPending();
   await loadVersions();

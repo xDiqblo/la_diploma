@@ -65,15 +65,6 @@ def add_event(event_type, class_name=None, track_id=None,
         return eid
 
 
-def update_event_clip(event_id: int, video_clip: str):
-    """Дописывает путь к видеоклипу (клип готовится асинхронно)."""
-    with _lock:
-        c = _conn()
-        c.execute("UPDATE events SET video_clip=? WHERE id=?", (video_clip, event_id))
-        c.commit()
-        c.close()
-
-
 def mark_synced(event_id: int):
     """Помечает событие как отправленное в облако."""
     with _lock:
@@ -145,29 +136,12 @@ def zone_report(date_from=None, date_to=None) -> list[dict]:
 
 
 def get_unsynced(limit=50, min_age_seconds=0) -> list[dict]:
-    """
-    События, ещё не отправленные в облако.
-
-    min_age_seconds: брать только события «старше» N секунд, ЛИБО те, у которых
-    видеоклип уже готов. Это нужно, потому что клип пишется асинхронно (через
-    несколько секунд после создания события): даём ему время записаться, чтобы
-    он успел выгрузиться в облако вместе с событием, а не потерялся.
-    """
+    """События, ещё не отправленные в облако (новые сначала по возрастанию id)."""
     with _lock:
         c = _conn()
-        if min_age_seconds > 0:
-            rows = c.execute(
-                """SELECT * FROM events
-                   WHERE synced=0
-                     AND (video_clip IS NOT NULL
-                          OR timestamp <= datetime('now','localtime',?))
-                   ORDER BY id LIMIT ?""",
-                (f'-{int(min_age_seconds)} seconds', limit),
-            ).fetchall()
-        else:
-            rows = c.execute(
-                "SELECT * FROM events WHERE synced=0 ORDER BY id LIMIT ?", (limit,)
-            ).fetchall()
+        rows = c.execute(
+            "SELECT * FROM events WHERE synced=0 ORDER BY id LIMIT ?", (limit,)
+        ).fetchall()
         c.close()
         return [dict(r) for r in rows]
 

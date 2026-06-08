@@ -198,19 +198,6 @@ async def recv_screenshot(event_id: int,
     return {'status': 'ok'}
 
 
-@app.post('/api/events/{event_id}/clip')
-async def recv_clip(event_id: int,
-                    file: UploadFile = File(...),
-                    x_api_key: str = Header(default=None)):
-    """Приём видеоклипа события в облачное хранилище."""
-    _check_key(x_api_key)
-    dest = os.path.join(CLOUD_STOR, f'clip_{event_id}.mp4')
-    with open(dest, 'wb') as f:
-        shutil.copyfileobj(file.file, f)
-    cloud_set_media(event_id, 'video_clip', f'cloud_storage/clip_{event_id}.mp4')
-    return {'status': 'ok'}
-
-
 # ─── API для тонкого клиента ─────────────────────────────────────────────────
 
 @app.get('/api/cloud/events')

@@ -165,12 +165,20 @@ class Detector:
 
         boxes = results[0].boxes
         if boxes is not None and len(boxes) > 0:
-            data = boxes.data.cpu().numpy()
+            # Используем именованные атрибуты вместо индексов boxes.data:
+            # при включённом трекинге формат data меняется на
+            # [x1,y1,x2,y2, track_id, conf, cls], из-за чего индексы [4]/[5]
+            # «съезжают» (conf принимался за class_id → всё определялось как
+            # person). Атрибуты xyxy/conf/cls/id однозначны в любом режиме.
+            xyxy  = boxes.xyxy.cpu().numpy()
+            confs = boxes.conf.cpu().numpy()
+            clss  = boxes.cls.cpu().numpy()
+            ids   = boxes.id.cpu().numpy() if boxes.id is not None else None
 
-            for det in data:
-                x1, y1, x2, y2 = map(int, det[:4])
-                confidence = float(det[4])
-                class_id = int(det[5])
+            for i in range(len(boxes)):
+                x1, y1, x2, y2 = map(int, xyxy[i])
+                confidence = float(confs[i])
+                class_id = int(clss[i])
 
                 if class_id not in self.class_map:
                     continue
@@ -179,8 +187,8 @@ class Detector:
 
                 # track_id от ByteTrack (может отсутствовать в первых кадрах)
                 track_id = None
-                if boxes.id is not None and len(det) > 6:
-                    track_id = int(det[6])
+                if ids is not None:
+                    track_id = int(ids[i])
                     active_ids.add(track_id)
 
                 # Время нахождения объекта в кадре

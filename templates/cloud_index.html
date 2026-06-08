@@ -194,11 +194,11 @@ input[type=date],select{
           <table>
             <thead>
               <tr>
-                <th>#</th><th>Время</th><th>Тип</th><th>Зона</th><th>Объект</th><th>Фото</th><th>Видео</th>
+                <th>#</th><th>Время</th><th>Тип</th><th>Зона</th><th>Объект</th><th>Фото</th>
               </tr>
             </thead>
             <tbody id="ctbody">
-              <tr><td colspan="7" class="empty">Загрузка…</td></tr>
+              <tr><td colspan="6" class="empty">Загрузка…</td></tr>
             </tbody>
           </table>
           <div class="pager" id="cpager"></div>
@@ -240,6 +240,7 @@ input[type=date],select{
 <script>
 let cloudPage=1;
 let chart=null;
+let curEvents=[];   // события текущей страницы (для модалки по индексу)
 
 // ─── авторизация ─────────────────────────────────────────────────────────
 async function doLogin(){
@@ -292,29 +293,26 @@ async function loadEvents(page=1){
 }
 
 function renderTable(events){
+  curEvents=events||[];
   const tb=document.getElementById('ctbody');
-  if(!events.length){
-    tb.innerHTML='<tr><td colspan="7" class="empty">Нет событий в облаке</td></tr>';
+  if(!curEvents.length){
+    tb.innerHTML='<tr><td colspan="6" class="empty">Нет событий в облаке</td></tr>';
     return;
   }
-  tb.innerHTML=events.map(e=>{
+  tb.innerHTML=curEvents.map((e,i)=>{
     const badge=`<span class="badge ${badgeFor(e.event_type)}">${e.event_type}</span>`;
     const zone=e.zone?`<span class="zchip">${e.zone}</span>`:'<span style="color:var(--mut)">весь кадр</span>';
     const obj=e.class_name?`${e.class_name} · ID ${e.track_id??'—'}` :'—';
     const shot=e.screenshot
-      ?`<img class="thumb" src="/${e.screenshot}" onclick="event.stopPropagation();showModal(${JSON.stringify(e)})">`
+      ?`<img class="thumb" src="/${e.screenshot}" onclick="event.stopPropagation();showModal(${i})">`
       :'—';
-    const clip=e.video_clip
-      ?`<a class="clip" href="/${e.video_clip}" target="_blank" onclick="event.stopPropagation()">▶ смотреть</a>`
-      :'—';
-    return `<tr class="ev-row" onclick="showModal(${JSON.stringify(e).replace(/'/g,"&#39;")})">
+    return `<tr class="ev-row" onclick="showModal(${i})">
       <td class="ts">${e.id}</td>
       <td class="ts">${e.timestamp??e.received_at}</td>
       <td>${badge}</td>
       <td>${zone}</td>
       <td>${obj}</td>
       <td>${shot}</td>
-      <td>${clip}</td>
     </tr>`;
   }).join('');
 }
@@ -384,11 +382,12 @@ async function loadStats(){
 }
 
 // ─── модалка ──────────────────────────────────────────────────────────────
-function showModal(e){
+function showModal(arg){
+  const e=(typeof arg==='number')?curEvents[arg]:arg;
+  if(!e) return;
   const badge=`<span class="badge ${badgeFor(e.event_type)}">${e.event_type}</span>`;
   const img=e.screenshot?`<img class="mimg" src="/${e.screenshot}" alt="скриншот">`
     :'<div style="color:var(--mut);padding:20px;text-align:center">Скриншот не загружен</div>';
-  const clip=e.video_clip?`<div style="margin-bottom:12px"><a class="clip" href="/${e.video_clip}" target="_blank">▶ Открыть видеофрагмент</a></div>`:'';
   document.getElementById('mcontent').innerHTML=`
     <div style="margin-bottom:12px;font-size:18px;font-weight:700">${badge}</div>
     <div style="margin-bottom:12px">
@@ -399,7 +398,6 @@ function showModal(e){
       <span class="mtag">Уверенность<span>${e.confidence!=null?e.confidence.toFixed(2):'—'}</span></span>
       <span class="mtag">Получено<span>${e.received_at??'—'}</span></span>
     </div>
-    ${clip}
     ${img}
   `;
   document.getElementById('modal').classList.add('open');
